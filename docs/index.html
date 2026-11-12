@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>在庫ノート ドキュメント</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f4f3ef; --fg: #1c1c1a; --card: #fff; --line: rgba(0,0,0,.08); --accent: #0b6249; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0e100f; --fg: #edece8; --card: #1a1d1b; --line: rgba(255,255,255,.08); --accent: #5fd9b0; } }
+  body { margin: 0; padding: 24px 16px 48px; font: 16px/1.6 -apple-system, "Hiragino Sans", sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 16px; }
+  a.card { display: block; background: var(--card); border-radius: 14px; padding: 14px 16px; margin: 0 0 10px; color: inherit; text-decoration: none; border: 1px solid var(--line); }
+  a.card b { color: var(--accent); }
+  small { opacity: .7; display: block; }
+</style>
+</head>
+<body>
+<main>
+  <h1>在庫ノート ドキュメント</h1>
+  <a class="card" href="../README.md"><b>README</b><small>概要・起動手順・iPhone へのインストール</small></a>
+  <a class="card" href="BACKUP_FORMAT.md"><b>バックアップ形式仕様</b><small>ZIP + JSON + 写真。他アプリでの読み込み用</small></a>
+  <a class="card" href="ARCHITECTURE.md"><b>設計資料</b><small>技術選定・データベース・在庫計算方式</small></a>
+  <a class="card" href="NATIVE_MIGRATION.md"><b>ネイティブ移行</b><small>SwiftUI 版へのデータ移行</small></a>
+  <a class="card" href="SAMPLE_DATA.md"><b>サンプルデータ</b><small>内容と検証観点</small></a>
+  <a class="card" href="MANUAL_TESTS.md"><b>手動テスト手順</b></a>
+  <a class="card" href="TEST_RESULTS.md"><b>自動テスト結果</b></a>
+  <a class="card" href="KNOWN_ISSUES.md"><b>未解決の問題・未検証事項</b></a>
+</main>
+</body>
+</html>

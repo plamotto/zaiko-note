@@ -7,14 +7,49 @@ import { OP_LABEL, replay } from '../core/ledger.js';
 
 const TITLES = { receive: '入庫', consume: '使用', move: '移動', adjust: '棚卸し' };
 
-export function locationSelect(repo, { value, stock, exclude, allowNew = true, placeholder = '保管場所を選択', onChange }) {
+/** 新しい保管場所を名前と管理区分を指定して追加（区分は表示中のタブを初期値にする） */
+export function promptNewLocation(repo) {
+  return new Promise((resolve) => {
+    let done = false;
+    const name = h('input', { class: 'input', placeholder: '例：押入れ、車のトランク' });
+    const divs = [...repo.divisions.values()].sort((a, b) => a.sort - b.sort);
+    const scope = repo.divisions.has(repo.settings.scope) ? repo.settings.scope : divs[0]?.id || '';
+    const divSel = h('select', { class: 'select' }, h('option', { value: '' }, '管理区分なし'), divs.map((d) => h('option', { value: d.id }, d.name)));
+    divSel.value = scope;
+    const err = h('div');
+    const save = h('button', { class: 'btn primary block' }, '追加');
+    const sheet = openSheet({
+      title: '新しい保管場所',
+      body: h('div', { class: 'form' }, err, field('場所の名前', name, { required: true }), divs.length ? field('管理区分', divSel, { hint: '仕事用・プライベートなど。あとから 保管場所タブ → 場所 → 編集 で変更できます' }) : null),
+      footer: save,
+      onClose: () => !done && resolve(null),
+    });
+    save.addEventListener('click', async () => {
+      try {
+        const loc = await repo.saveLocation({ name: name.value, divisionId: divSel.value || null });
+        done = true;
+        sheet.close();
+        toast(`保管場所「${loc.name}」を追加しました${loc.divisionId ? `（${repo.divisions.get(loc.divisionId)?.name}）` : ''}`);
+        resolve(loc);
+      } catch (e) {
+        clear(err).appendChild(notice('danger', 'alert', e.message));
+      }
+    });
+    setTimeout(() => name.focus(), 300);
+  });
+}
+
+export function locationSelect(repo, { value, stock, exclude, allowNew = true, scoped = true, placeholder = '保管場所を選択', onChange }) {
   const sel = h('select', { class: 'select' });
   const fill = (v) => {
     clear(sel);
     sel.appendChild(h('option', { value: '' }, placeholder));
     const groups = new Map();
+    // 仕事用・プライベートなどのタブを選んでいるときは、その区分の場所だけを候補にする
+    const sl = scoped ? scopeLocs(repo) : null;
     for (const loc of [...repo.locations.values()].sort((a, b) => a.sort - b.sort)) {
       if (loc.archived && loc.id !== v) continue;
+      if (sl && !sl.has(loc.id) && loc.id !== v) continue;
       if (exclude && exclude === loc.id) continue;
       if (stock && !stock.has(loc.id)) continue;
       const key = loc.divisionId || '';
@@ -35,18 +70,10 @@ export function locationSelect(repo, { value, stock, exclude, allowNew = true, p
   let last = value || '';
   sel.addEventListener('change', async () => {
     if (sel.value === '__new') {
-      const name = await confirmDialog({ title: '新しい保管場所', message: '場所の名前を入力してください（例：倉庫B、車のトランク）', ok: '追加', input: { placeholder: '保管場所名', required: true } });
-      if (name) {
-        try {
-          const div = [...repo.divisions.values()][0];
-          const loc = await repo.saveLocation({ name, divisionId: div?.id || null });
-          fill(loc.id);
-          last = loc.id;
-          toast(`保管場所「${loc.name}」を追加しました${div ? `（区分：${div.name}）` : ''}`);
-        } catch (e) {
-          toastError(e);
-          sel.value = last;
-        }
+      const loc = await promptNewLocation(repo);
+      if (loc) {
+        fill(loc.id);
+        last = loc.id;
       } else sel.value = last;
     } else last = sel.value;
     onChange?.(sel.value);
@@ -323,7 +350,7 @@ export function openOpSheet(type, item, opts = {}) {
     );
     let toSel, toDetail;
     if (isMove) {
-      toSel = locationSelect(repo, { value: p.toLocationId || '', placeholder: '移動先を選択' });
+      toSel = locationSelect(repo, { value: p.toLocationId || '', scoped: false, placeholder: '移動先を選択' });
       toDetail = h('input', { class: 'input', placeholder: '例：シンク下', value: p.toDetail || '' });
       form.append(field('移動先', toSel, { required: true }), field('移動先の詳細位置', toDetail));
     }

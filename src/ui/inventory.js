@@ -204,6 +204,7 @@ export function inventoryScreen() {
     clear(chips);
     const chip = (label, on, onclick, cls = '') => h('button', { class: `chip ${cls} ${on ? 'on' : ''}`, onclick }, label);
     chips.append(
+      ...[
       chip(h('span', null, '要補充 ', h('span', { class: 'count' }, alerts)), filters.status === 'alert', () => ((filters.status = filters.status === 'alert' ? 'all' : 'alert'), update()), 'warn'),
       chip(filters.status === 'out' ? '在庫切れ' : filters.status === 'instock' ? '在庫あり' : '在庫状態', ['out', 'instock'].includes(filters.status), () =>
         pickSheet('在庫状態', [['all', 'すべて'], ['alert', '要補充（在庫少・在庫切れ）', '警告ラインを設定した商品のみ'], ['out', '在庫切れのみ'], ['instock', '在庫ありのみ']], filters.status, (v) => ((filters.status = v), update()))
@@ -218,6 +219,7 @@ export function inventoryScreen() {
         pickSheet('管理区分', [[null, 'すべて'], ...[...repo.divisions.values()].sort((a, b) => a.sort - b.sort).map((d) => [d.id, d.name])], filters.divisionId, (v) => ((filters.divisionId = v), update()))
       ),
       chip(h('span', null, icon('archive'), 'アーカイブ'), filters.archived, () => ((filters.archived = !filters.archived), update()))
+      ].filter(Boolean)
     );
     const anyFilter = filters.q || filters.categoryId || filters.locationId || filters.divisionId || filters.status !== 'all' || filters.archived;
     clear(meta);

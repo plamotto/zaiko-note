@@ -144,7 +144,8 @@ export function editLocation(loc) {
   const repo = app.repo;
   const name = h('input', { class: 'input', value: loc?.name || '', placeholder: '例：倉庫A、自宅パントリー' });
   const divSel = h('select', { class: 'select' }, h('option', { value: '' }, '管理区分なし'), [...repo.divisions.values()].sort((a, b) => a.sort - b.sort).map((d) => h('option', { value: d.id }, d.name)));
-  divSel.value = loc?.divisionId || (!loc && repo.divisions.size ? [...repo.divisions.values()][0].id : '');
+  const scopeDiv = repo.divisions.has(repo.settings.scope) ? repo.settings.scope : null;
+  divSel.value = loc?.divisionId || (!loc ? scopeDiv || (repo.divisions.size ? [...repo.divisions.values()][0].id : '') : '');
   const memo = h('input', { class: 'input', value: loc?.memo || '', placeholder: '任意' });
   const err = h('div');
   const save = h('button', { class: 'btn primary block' }, '保存');

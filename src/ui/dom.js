@@ -1,5 +1,16 @@
 // DOM ヘルパー・アイコン・シート/ダイアログ/トースト
 
+// 条件付きで省略した要素（null / undefined / false）が「null」という文字として表示されないよう、
+// アプリ全体で append / prepend から除外する。
+for (const proto of [Element.prototype, DocumentFragment.prototype]) {
+  for (const name of ['append', 'prepend']) {
+    const orig = proto[name];
+    proto[name] = function (...nodes) {
+      return orig.apply(this, nodes.filter((n) => n != null && n !== false));
+    };
+  }
+}
+
 export function h(tag, props, ...children) {
   const el = tag === 'frag' ? document.createDocumentFragment() : document.createElement(tag);
   if (props) {

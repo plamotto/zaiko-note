@@ -10,7 +10,7 @@ import { getAll } from './db.js';
 
 export const BACKUP_FORMAT = 'zaiko-pwa-backup';
 export const BACKUP_FORMAT_VERSION = 1;
-export const APP_VERSION = '1.1.1';
+export const APP_VERSION = '1.1.2';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();

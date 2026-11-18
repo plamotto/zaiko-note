@@ -107,7 +107,14 @@ export function placeDetailScreen(id) {
       rows.push({ it, q, details: [...new Set(ps.map((p) => p.detail).filter(Boolean))] });
     }
     rows.sort((a, b) => a.it.name.localeCompare(b.it.name, 'ja'));
-    el.appendChild(h('div', { class: 'pad small muted' }, `${div ? `管理区分：${div.name}` : '管理区分なし'}${loc.memo ? ` ・ ${loc.memo}` : ''}`));
+    el.appendChild(
+      h(
+        'div',
+        { class: 'pad', style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+        h('span', { class: 'small muted' }, `${div ? `管理区分：${div.name}` : '管理区分なし'}${loc.memo ? ` ・ ${loc.memo}` : ''}`),
+        h('button', { class: 'btn sm', onclick: () => editLocation(loc) }, icon('edit'), '区分・名前を変更')
+      )
+    );
     if (rows.length) {
       const v = valuation(allPortions, lotsAll);
       el.appendChild(h('div', { class: 'section' }, h('div', { class: 'section-h' }, 'この場所の在庫金額'), h('div', { style: { margin: '0 12px' } }, moneyTiles(v)), computabilityNote(v)));

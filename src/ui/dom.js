@@ -373,3 +373,10 @@ export function pickFile(accept, { multiple = false, capture } = {}) {
     input.click();
   });
 }
+
+/** JANコードで商品名をネット検索（ブラウザで開くだけ。アプリから外部へ自動送信はしない） */
+export function janWebSearch(code) {
+  const c = String(code || '').replace(/\D/g, '');
+  if (!c) return;
+  window.open(`https://www.google.com/search?q=${encodeURIComponent(c)}`, '_blank', 'noopener');
+}

@@ -23,12 +23,74 @@ export function divColor(repo, locationId) {
 }
 
 /** 商品の表示用集計 */
-export function itemView(repo, item) {
+/** 表示中の管理区分（仕事用・家庭用など）に属する保管場所ID。すべて表示なら null */
+export function scopeLocs(repo) {
+  const s = repo.settings.scope;
+  if (!s || s === 'all' || !repo.divisions.has(s)) return null;
+  return new Set([...repo.locations.values()].filter((l) => l.divisionId === s).map((l) => l.id));
+}
+
+/** 商品が表示中の区分に関係するか（区分内に在庫・履歴がある、または履歴が全くない新規商品） */
+export function inScope(repo, item, locs) {
+  if (!locs) return true;
+  const ops = repo.itemOps(item.id);
+  if (!ops.length) return true;
+  return ops.some((o) => locs.has(o.locationId) || locs.has(o.fromLocationId) || locs.has(o.toLocationId));
+}
+
+export function opInScope(repo, op, locs) {
+  if (!locs) return true;
+  const o = op.type === 'void' ? repo.ops.get(op.targetId) || op : op;
+  return locs.has(o.locationId) || locs.has(o.fromLocationId) || locs.has(o.toLocationId);
+}
+
+/** 要補充（在庫少・在庫切れ）の件数。表示中の区分の在庫数で判定 */
+export function alertCount(repo) {
+  const locs = scopeLocs(repo);
+  let n = 0;
+  for (const i of repo.items.values()) {
+    if (i.archived || !inScope(repo, i, locs)) continue;
+    const st = itemView(repo, i, locs).status;
+    if (st === 'low' || st === 'out') n++;
+  }
+  return n;
+}
+
+/** 仕事用／家庭用などの切り替えタブ（管理区分が無ければ表示しない） */
+export function scopeBar(repo) {
+  const divs = [...repo.divisions.values()].sort((a, b) => a.sort - b.sort);
+  if (!divs.length) return null;
+  const cur = repo.settings.scope && repo.divisions.has(repo.settings.scope) ? repo.settings.scope : 'all';
+  const wrap = h('div', { class: 'scope-bar', role: 'tablist', 'aria-label': '管理区分の切り替え' });
+  const render = (val) => {
+    while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+    for (const [id, label, color] of [['all', 'すべて', null], ...divs.map((d) => [d.id, d.name, d.color])]) {
+      wrap.appendChild(
+        h('button', {
+          role: 'tab',
+          'aria-selected': String(id === val),
+          class: id === val ? 'on' : '',
+          onclick: () => {
+            if (id === val) return;
+            render(id);
+            repo.saveSettings({ scope: id });
+          },
+        }, color ? h('i', { style: { background: `var(--div-${color})` } }) : null, label)
+      );
+    }
+  };
+  render(cur);
+  return wrap;
+}
+
+export function itemView(repo, item, locs = null) {
   const l = repo.ledger(item.id);
-  if (!l.ok) return { ok: false, total: 0, status: 'out', byLoc: [], error: l.error };
-  const status = stockStatus(l.total, item.threshold);
-  const byLoc = [...l.byLocation].map(([locationId, qty]) => ({ locationId, qty })).sort((a, b) => b.qty - a.qty);
-  const v = valuation(l.portions, l.lots);
+  if (!l.ok) return { ok: false, total: 0, allTotal: 0, status: 'out', byLoc: [], error: l.error };
+  const portions = locs ? l.portions.filter((p) => locs.has(p.locationId)) : l.portions;
+  const total = locs ? portions.reduce((s, p) => s + p.qty, 0) : l.total;
+  const status = stockStatus(total, item.threshold);
+  const byLoc = [...l.byLocation].filter(([id]) => !locs || locs.has(id)).map(([locationId, qty]) => ({ locationId, qty })).sort((a, b) => b.qty - a.qty);
+  const v = valuation(portions, l.lots);
   let unit = null;
   if (v.computable) unit = v.avg[v.totalTax];
   let lastDate = null;
@@ -39,7 +101,7 @@ export function itemView(repo, item) {
   }
   let lastActivity = item.updatedAt;
   for (const op of repo.itemOps(item.id)) if (op.createdAt > lastActivity) lastActivity = op.createdAt;
-  return { ok: true, ledger: l, total: l.total, status, byLoc, valuation: v, unitPrice: unit, lastPurchase: lastDate, lastActivity };
+  return { ok: true, ledger: l, total, allTotal: l.total, status, byLoc, valuation: v, unitPrice: unit, lastPurchase: lastDate, lastActivity };
 }
 
 export function packText(item, total) {

@@ -1,5 +1,5 @@
 // 商品詳細・商品登録/編集
-import { h, icon, clear, openSheet, toast, toastError, field, notice, confirmDialog, photoImg, photoUrl, forgetPhoto, pickFile, seg } from './dom.js';
+import { h, icon, clear, openSheet, toast, toastError, field, notice, confirmDialog, photoImg, photoUrl, forgetPhoto, pickFile, seg, janWebSearch } from './dom.js';
 import { app, go, itemView, packText, statusBadge, fmtQty, moneyTiles, computabilityNote, describeOp, OP_ICON, topbar, divColor, emptyState } from './views.js';
 import { openOpSheet } from './ops.js';
 import { openOpDetail } from './history.js';
@@ -472,7 +472,7 @@ export function itemFormScreen(id, params = {}) {
     field('基本数量単位', h('div', null, unitEl, unitChips), { required: true, hint: '在庫はこの単位（最小管理単位）で数えます' }),
     h('div', { class: 'row2' }, field('カテゴリ', catSel), field('警告ライン', thrEl, { hint: 'この数以下で「在庫少」' })),
     field('JANコード', h('div', { class: 'inline-row' }, janEl, scanBtn)),
-    janHint,
+    h('div', { style: { display: 'flex', gap: '8px', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: '-8px' } }, janHint, h('button', { type: 'button', class: 'btn ghost sm', style: { flex: 'none' }, onclick: () => (janEl.value.trim() ? janWebSearch(janEl.value) : toast('JANコードを入力してください')) }, icon('search'), 'ネットで調べる')),
     discBtn,
     details,
     h('div', { style: { marginTop: '8px' } }, saveBtn),

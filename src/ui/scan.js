@@ -1,5 +1,5 @@
 // JANバーコードスキャン（カメラ）と手入力
-import { h, icon, clear, openSheet, toast, notice } from './dom.js';
+import { h, icon, clear, openSheet, toast, notice, janWebSearch } from './dom.js';
 import { app, go, fmtQty, itemView, thumb, packText, statusBadge } from './views.js';
 import { openOpSheet } from './ops.js';
 import { decodeImageData } from '../scan/ean.js';
@@ -187,7 +187,8 @@ export function scanScreen() {
           h('div', { class: 'small muted' }, 'JANコード'),
           h('div', { class: 'num', style: { fontSize: '22px', fontWeight: 700, letterSpacing: '0.04em' } }, code),
           h('p', { class: 'muted small' }, 'この商品はまだ登録されていません。JANコードを引き継いで新規登録できます。'),
-          h('button', { class: 'btn primary block', onclick: () => go(`#/new?jan=${encodeURIComponent(code)}`) }, icon('plus'), 'この JAN で新規登録')
+          h('button', { class: 'btn primary block', onclick: () => go(`#/new?jan=${encodeURIComponent(code)}`) }, icon('plus'), 'この JAN で新規登録'),
+          h('button', { class: 'btn block', style: { marginTop: '8px' }, onclick: () => janWebSearch(code) }, icon('search'), 'ネットで商品名を調べる')
         )
       );
     }

@@ -1,6 +1,6 @@
 // 履歴タブと履歴詳細（訂正・取り消し）
 import { h, icon, clear, openSheet, toast, toastError, confirmDialog, seg } from './dom.js';
-import { app, go, describeOp, OP_ICON, fmtQty, topbar, emptyState, thumb } from './views.js';
+import { app, go, describeOp, OP_ICON, fmtQty, topbar, emptyState, thumb, scopeBar, scopeLocs, opInScope } from './views.js';
 import { openOpSheet } from './ops.js';
 import { OP_LABEL, opOrder } from '../core/ledger.js';
 import { formatDateJa, formatDateTime, today } from '../core/util.js';
@@ -132,13 +132,20 @@ export function historyScreen(params = {}) {
   q.addEventListener('input', () => ((histFilter.q = q.value), update()));
   const listEl = h('div');
   const item = itemId ? repo.items.get(itemId) : null;
+  let scopeHost = null;
   const bar = itemId
     ? topbar({ title: item ? `${item.name} の履歴` : '履歴', back: true })
-    : h('header', { class: 'topbar' }, h('div', { class: 'title-row' }, h('h1', null, '履歴')), h('div', { class: 'search', style: { marginTop: '6px' } }, icon('search'), q));
+    : h('header', { class: 'topbar' }, h('div', { class: 'title-row' }, h('h1', null, '履歴')), (scopeHost = h('div')), h('div', { class: 'search', style: { marginTop: '6px' } }, icon('search'), q));
   el.append(bar, h('div', { class: 'pad', style: { marginTop: '8px' } }, typeSeg), listEl);
 
   function update() {
     clear(listEl);
+    if (scopeHost) {
+      clear(scopeHost);
+      const sb = scopeBar(repo);
+      if (sb) scopeHost.appendChild(sb);
+    }
+    const locs = itemId ? null : scopeLocs(repo);
     const statusCache = new Map();
     const stOf = (op) => {
       if (!statusCache.has(op.itemId)) statusCache.set(op.itemId, repo.opStatuses(op.itemId));
@@ -147,6 +154,7 @@ export function historyScreen(params = {}) {
     const nq = normalizeForSearch(histFilter.q);
     let ops = [...repo.ops.values()].filter((op) => {
       if (itemId && op.itemId !== itemId) return false;
+      if (locs && !opInScope(repo, op, locs)) return false;
       const t = histFilter.type;
       if (t === 'fix') {
         if (!(op.type === 'void' || op.corrects || stOf(op) !== 'active')) return false;
@@ -166,7 +174,7 @@ export function historyScreen(params = {}) {
     for (const op of ops) {
       if (op.date !== day) {
         day = op.date;
-        listEl.appendChild(h('div', { class: 'tl-day', style: itemId ? { top: 'calc(var(--safe-t) + 52px)' } : null }, formatDateJa(op.date)));
+        listEl.appendChild(h('div', { class: 'tl-day' }, formatDateJa(op.date)));
         group = h('div', { class: 'group' });
         listEl.appendChild(group);
       }
@@ -195,5 +203,8 @@ export function historyScreen(params = {}) {
     if (total > ops.length) listEl.appendChild(h('div', { class: 'footnote' }, `最新500件を表示しています（全${fmtQty(total)}件）。すべての履歴は 設定 → CSV出力 から確認できます。`));
   }
   update();
-  return { el, update };
+  // 日付見出しをヘッダーの直下に固定（ヘッダーの高さは区分タブの有無で変わる）
+  const fixTop = () => el.style.setProperty('--hist-top', `${Math.max(0, bar.getBoundingClientRect().height - 4)}px`);
+  requestAnimationFrame(fixTop);
+  return { el, update: () => (update(), requestAnimationFrame(fixTop)) };
 }

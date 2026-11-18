@@ -1,6 +1,6 @@
 // 在庫操作シート：入庫・使用・移動・棚卸し（新規／訂正）
 import { h, icon, openSheet, toast, toastError, field, seg, stepper, notice, confirmDialog, clear } from './dom.js';
-import { app, fmtQty, packText, itemView, go, divColor } from './views.js';
+import { app, fmtQty, packText, itemView, go, divColor, scopeLocs } from './views.js';
 import { today, formatDateJa, parseIntStrict } from '../core/util.js';
 import { parseMoneyInput, unitPrice, formatUnit, formatMoneyStr, formatFrac, Frac, toCents, TAX_LABEL } from '../core/money.js';
 import { OP_LABEL, replay } from '../core/ledger.js';
@@ -21,7 +21,9 @@ export function locationSelect(repo, { value, stock, exclude, allowNew = true, p
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(loc);
     }
-    for (const [divId, locs] of groups) {
+    const scope = repo.settings.scope;
+    const ordered = [...groups].sort((a, b) => (b[0] === scope) - (a[0] === scope));
+    for (const [divId, locs] of ordered) {
       const og = h('optgroup', { label: repo.divisions.get(divId)?.name || '区分なし' });
       for (const l of locs) og.appendChild(h('option', { value: l.id }, stock ? `${l.name}（在庫 ${fmtQty(stock.get(l.id))}）` : l.name));
       sel.appendChild(og);
@@ -55,7 +57,9 @@ export function locationSelect(repo, { value, stock, exclude, allowNew = true, p
 
 /** 在庫のある保管場所をボタンで選ぶ（片手操作向け）。場所が多い場合はセレクトにフォールバック */
 export function locationPicker(repo, { value, stock, unit, onChange, placeholder }) {
-  const ids = [...stock.keys()].filter((id) => repo.locations.has(id));
+  let ids = [...stock.keys()].filter((id) => repo.locations.has(id));
+  const sl = scopeLocs(repo);
+  if (sl && ids.some((id) => sl.has(id)) && !(value && !sl.has(value))) ids = ids.filter((id) => sl.has(id));
   if (ids.length > 8) {
     const sel = locationSelect(repo, { value, stock, allowNew: false, placeholder, onChange });
     return { el: sel, get value() { return sel.value; } };
@@ -192,7 +196,9 @@ export function openOpSheet(type, item, opts = {}) {
     const hasPack = (item.packSize || 0) > 1 || (p.packSize || 0) > 1;
     let mode = hasPack ? 'pack' : 'unit';
     const lastRcv = [...repo.itemOps(item.id)].filter((o) => o.type === 'receive').sort((a, b) => b.seq - a.seq)[0];
-    const locSel = locationSelect(repo, { value: p.locationId || opts.locationId || lastRcv?.locationId || '' });
+    const sl = scopeLocs(repo);
+    const lastInScope = [...repo.itemOps(item.id)].filter((o) => o.type === 'receive' && (!sl || sl.has(o.locationId))).sort((a, b) => b.seq - a.seq)[0];
+    const locSel = locationSelect(repo, { value: p.locationId || opts.locationId || lastInScope?.locationId || (sl ? '' : lastRcv?.locationId) || '' });
     const detailEl = h('input', { class: 'input', placeholder: '例：棚2・上段', value: p.detail ?? (lastRcv?.locationId === locSel.value ? lastRcv.detail : '') ?? '', list: 'dl-detail' });
     const packCount = stepper({ value: p.packCount ?? 1 }, { min: 1 });
     const packSize = h('input', { class: 'input num', inputmode: 'numeric', value: p.packSize ?? item.packSize ?? 1 });

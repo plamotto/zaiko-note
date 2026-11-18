@@ -1,6 +1,6 @@
 // エントリポイント：起動・ルーティング・タブバー・バナー・サンプルモード切替
 import { h, icon, clear, toast, toastError, closeAllSheets, confirmDialog } from './dom.js';
-import { app, go, itemView } from './views.js';
+import { app, go, alertCount } from './views.js';
 import { Repo } from '../data/store.js';
 import { deleteDb } from '../data/db.js';
 import { loadSampleData } from '../data/sample.js';
@@ -53,7 +53,7 @@ function parseRoute() {
 
 function renderTabbar(active) {
   clear(tabbar);
-  const alerts = app.repo ? [...app.repo.items.values()].filter((i) => !i.archived && ['low', 'out'].includes(itemView(app.repo, i).status)).length : 0;
+  const alerts = app.repo ? alertCount(app.repo) : 0;
   const inner = h('div', { class: 'tabbar-inner' });
   for (const [key, label, ic, hash] of TABS) {
     const on = key === active;

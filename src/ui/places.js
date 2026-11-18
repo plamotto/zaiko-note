@@ -1,6 +1,6 @@
 // 保管場所タブ・場所別在庫・マスター管理（保管場所／管理区分／カテゴリ）
 import { h, icon, clear, openSheet, toast, toastError, field, confirmDialog, notice } from './dom.js';
-import { app, go, fmtQty, topbar, emptyState, thumb, packText, statusBadge, DIV_COLORS, moneyTiles, computabilityNote, itemView } from './views.js';
+import { app, go, fmtQty, topbar, emptyState, thumb, packText, statusBadge, DIV_COLORS, moneyTiles, computabilityNote, itemView, scopeBar } from './views.js';
 import { valuation } from '../core/ledger.js';
 import { openQuickActions } from './ops.js';
 
@@ -25,9 +25,14 @@ export function placesScreen() {
   const repo = app.repo;
   const el = h('div', { class: 'view' });
   const body = h('div');
-  el.append(h('header', { class: 'topbar' }, h('div', { class: 'title-row' }, h('h1', null, '保管場所'), h('button', { class: 'btn ghost sm', onclick: () => go('#/manage/places') }, '編集'))), body);
+  const scopeHost = h('div');
+  el.append(h('header', { class: 'topbar' }, h('div', { class: 'title-row' }, h('h1', null, '保管場所'), h('button', { class: 'btn ghost sm', onclick: () => go('#/manage/places') }, '編集')), scopeHost), body);
   function update() {
     clear(body);
+    clear(scopeHost);
+    const sb = scopeBar(repo);
+    if (sb) scopeHost.appendChild(sb);
+    const scope = repo.divisions.has(repo.settings.scope) ? repo.settings.scope : null;
     const stats = locStats(repo);
     const locs = [...repo.locations.values()].filter((l) => !l.archived).sort((a, b) => a.sort - b.sort);
     if (!locs.length) {
@@ -43,6 +48,7 @@ export function placesScreen() {
     const order = [...[...repo.divisions.values()].sort((a, b) => a.sort - b.sort).map((d) => d.id), ''];
     for (const k of order) {
       if (!groups.has(k)) continue;
+      if (scope && k !== scope) continue;
       const div = repo.divisions.get(k);
       const totalItems = groups.get(k).reduce((s, l) => s + (stats.get(l.id)?.items || 0), 0);
       body.appendChild(

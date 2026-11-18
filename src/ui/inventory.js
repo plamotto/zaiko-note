@@ -1,6 +1,6 @@
 // 在庫一覧（起動画面）
 import { h, icon, clear, openSheet, photoImg } from './dom.js';
-import { app, go, itemView, packText, statusBadge, thumb, locChip, searchText, matchQuery, fmtQty, emptyState } from './views.js';
+import { app, go, itemView, packText, statusBadge, thumb, locChip, searchText, matchQuery, fmtQty, emptyState, scopeLocs, inScope, scopeBar, alertCount } from './views.js';
 import { openQuickActions, openOpSheet } from './ops.js';
 
 // 絞り込み状態はセッション中保持（表示形式・並び順は設定に保存）
@@ -17,10 +17,12 @@ const SORTS = [
 
 function computeRows(repo) {
   const rows = [];
+  const locs = scopeLocs(repo);
   for (const item of repo.items.values()) {
     if (!!item.archived !== filters.archived) continue;
+    if (!inScope(repo, item, locs)) continue;
     if (filters.categoryId && (filters.categoryId === '__none' ? item.categoryId : item.categoryId !== filters.categoryId)) continue;
-    const v = itemView(repo, item);
+    const v = itemView(repo, item, locs);
     if (filters.locationId && !v.byLoc.some((b) => b.locationId === filters.locationId)) continue;
     if (filters.divisionId && !v.byLoc.some((b) => repo.locations.get(b.locationId)?.divisionId === filters.divisionId)) continue;
     if (filters.status === 'alert' && !(v.status === 'low' || v.status === 'out')) continue;
@@ -74,7 +76,8 @@ function listRow(repo, { item, v }) {
       'button',
       { class: 'qty-btn', onclick: () => openQuickActions(item), 'aria-label': `${item.name} の在庫操作` },
       h('div', null, h('span', { class: `qty num ${v.status}` }, fmtQty(v.total)), h('span', { class: 'qty-unit' }, item.unit)),
-      pack ? h('div', { class: 'qty-pack' }, pack) : null
+      pack ? h('div', { class: 'qty-pack' }, pack) : null,
+      v.allTotal !== v.total ? h('div', { class: 'qty-pack' }, `全体 ${fmtQty(v.allTotal)}`) : null
     )
   );
 }
@@ -137,7 +140,8 @@ export function inventoryScreen() {
   const sortBtn = h('button', { class: 'icon-btn', 'aria-label': '並び替え', onclick: openSort }, icon('sort'));
   const sub = h('div', { class: 'subtitle' });
   const chips = h('div', { class: 'chips' });
-  const bar = h('header', { class: 'topbar' }, h('div', { class: 'title-row' }, h('h1', null, '在庫'), sortBtn, viewBtn), sub, h('div', { class: 'search', style: { marginTop: '8px' } }, icon('search'), searchInput, clearBtn), chips);
+  const scopeHost = h('div');
+  const bar = h('header', { class: 'topbar' }, h('div', { class: 'title-row' }, h('h1', null, '在庫'), sortBtn, viewBtn), sub, scopeHost, h('div', { class: 'search', style: { marginTop: '8px' } }, icon('search'), searchInput, clearBtn), chips);
   const banners = h('div');
   const meta = h('div', { class: 'list-meta' });
   const listEl = h('div');
@@ -185,9 +189,14 @@ export function inventoryScreen() {
   }
 
   function update() {
+    clear(scopeHost);
+    const sb = scopeBar(repo);
+    if (sb) scopeHost.appendChild(sb);
     const rows = computeRows(repo);
-    const all = [...repo.items.values()].filter((i) => !i.archived);
-    const alerts = all.filter((i) => ['low', 'out'].includes(itemView(repo, i).status)).length;
+    const locs = scopeLocs(repo);
+    const all = [...repo.items.values()].filter((i) => !i.archived && inScope(repo, i, locs));
+    const alerts = alertCount(repo);
+    if (locs && filters.locationId && !locs.has(filters.locationId)) filters.locationId = null;
     sub.textContent = `${fmtQty(all.length)}品目${alerts ? ` ・ 要補充 ${alerts}` : ''}`;
     clear(viewBtn).appendChild(icon(repo.settings.viewMode === 'card' ? 'list' : 'grid'));
     clearBtn.classList.toggle('hidden', !searchInput.value);
@@ -203,9 +212,9 @@ export function inventoryScreen() {
         pickSheet('カテゴリ', [[null, 'すべて'], ...[...repo.categories.values()].sort((a, b) => a.sort - b.sort).map((c) => [c.id, c.name]), ['__none', '未設定']], filters.categoryId, (v) => ((filters.categoryId = v), update()))
       ),
       chip(filters.locationId ? repo.locations.get(filters.locationId)?.name || '場所' : '保管場所', !!filters.locationId, () =>
-        pickSheet('保管場所', [[null, 'すべて'], ...[...repo.locations.values()].filter((l) => !l.archived).sort((a, b) => a.sort - b.sort).map((l) => [l.id, l.name, repo.divisions.get(l.divisionId)?.name])], filters.locationId, (v) => ((filters.locationId = v), update()))
+        pickSheet('保管場所', [[null, 'すべて'], ...[...repo.locations.values()].filter((l) => !l.archived && (!scopeLocs(repo) || scopeLocs(repo).has(l.id))).sort((a, b) => a.sort - b.sort).map((l) => [l.id, l.name, repo.divisions.get(l.divisionId)?.name])], filters.locationId, (v) => ((filters.locationId = v), update()))
       ),
-      chip(filters.divisionId ? repo.divisions.get(filters.divisionId)?.name || '区分' : '管理区分', !!filters.divisionId, () =>
+      locs ? null : chip(filters.divisionId ? repo.divisions.get(filters.divisionId)?.name || '区分' : '管理区分', !!filters.divisionId, () =>
         pickSheet('管理区分', [[null, 'すべて'], ...[...repo.divisions.values()].sort((a, b) => a.sort - b.sort).map((d) => [d.id, d.name])], filters.divisionId, (v) => ((filters.divisionId = v), update()))
       ),
       chip(h('span', null, icon('archive'), 'アーカイブ'), filters.archived, () => ((filters.archived = !filters.archived), update()))

@@ -3,7 +3,7 @@
 // PRECACHE と VERSION は tools/build_sw.py が自動生成する（ファイル追加・変更後に実行）。
 
 // BEGIN GENERATED
-const VERSION = '49607a37bbfb';
+const VERSION = 'dcf7bb796859';
 const PRECACHE = [
   './',
   './icons/apple-touch-icon.png',

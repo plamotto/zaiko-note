@@ -634,3 +634,10 @@ input[type="date"].input { min-height: 48px; display: block; }
 .cd-preview { font-size: 13.5px; line-height: 1.5; padding: 10px 12px; border-radius: 12px; background: var(--surface-2, rgba(127,127,127,.1)); color: var(--text-2, inherit); }
 .cd-preview.warn { background: var(--warn-soft); color: var(--warn); }
 .cd-fix { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* 入れ物を設定する前の記録の修正カード */
+.pack-fix { margin: 12px 0 4px; padding: 12px 14px; border-radius: 14px; background: var(--warn-soft); color: var(--text); }
+.pack-fix .pf-t { display: flex; align-items: center; gap: 6px; color: var(--warn); font-size: 15px; }
+.pack-fix .pf-t svg { width: 18px; height: 18px; }
+.pack-fix .pf-d { font-size: 13.5px; line-height: 1.55; margin: 6px 0 10px; }
+.pack-fix .pf-b { display: flex; flex-wrap: wrap; gap: 8px; }

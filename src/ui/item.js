@@ -71,6 +71,7 @@ export function itemDetailScreen(id) {
         h('div', { class: 'small muted' }, '現在在庫'),
         h('div', { class: 'stock-big' }, h('span', { class: `qty num ${v.status}` }, fmtQty(v.total)), h('span', { class: 'qty-unit' }, item.unit)),
         pack ? h('div', { class: 'stock-ref' }, `参考：${pack}（1${item.packUnit || '箱'}${fmtQty(item.packSize)}${item.unit}換算・未開封数ではありません）`) : null,
+        packFixCard(item),
         (() => {
           const up = latestUnitPrice(repo, item);
           return up ? h('div', { class: 'unit-line' }, h('span', null, '最新の購入単価'), h('b', { class: 'num' }, up.text), h('span', { class: 'small muted' }, `（${TAX_LABEL[up.tax]}・${formatDateJa(up.op.date, { withYear: false })}購入）`)) : null;
@@ -263,6 +264,56 @@ export function itemDetailScreen(id) {
   return { el, update };
 }
 
+/** 入れ物なしで記録した入庫（入れ物を設定する前の記録の可能性がある） */
+function plainReceives(itemId) {
+  const ops = app.repo.itemOps(itemId);
+  const active = activeOpIds(ops);
+  return ops.filter((o) => active.has(o.id) && o.type === 'receive' && o.packSize === 1 && !o.looseQty);
+}
+const dismissKey = (itemId) => 'zaiko.packfix.' + itemId;
+function isDismissed(itemId, plain) {
+  try {
+    const d = (localStorage.getItem(dismissKey(itemId)) || '').split(',');
+    return plain.every((o) => d.includes(o.id));
+  } catch {
+    return false;
+  }
+}
+
+/** 商品詳細に出す「入れ物を設定する前の記録」の修正カード */
+function packFixCard(item) {
+  if (!(item.packSize > 1)) return null;
+  const plain = plainReceives(item.id);
+  if (!plain.length || isDismissed(item.id, plain)) return null;
+  const pu = item.packUnit || '箱';
+  const n = item.packSize;
+  const q = plain.reduce((a, o) => a + o.qty, 0);
+  return h(
+    'div',
+    { class: 'pack-fix' },
+    h('div', { class: 'pf-t' }, icon('alert'), h('b', null, '数が少なすぎませんか？')),
+    h('div', { class: 'pf-d' }, `入れ物（1${pu}＝${n}${item.unit}）を設定する前の入庫が「${q}${item.unit}」で記録されています。${q}${pu}（${q * n}${item.unit}）のつもりだった場合は直してください。`),
+    h(
+      'div',
+      { class: 'pf-b' },
+      h('button', { class: 'btn primary sm', onclick: () => offerPackConversion(item.id, { manual: true }) }, `${q}${pu}（${q * n}${item.unit}）に直す`),
+      h(
+        'button',
+        {
+          class: 'btn sm',
+          onclick: (e) => {
+            try {
+              localStorage.setItem(dismissKey(item.id), plain.map((o) => o.id).join(','));
+            } catch {}
+            e.currentTarget.closest('.pack-fix').remove();
+          },
+        },
+        `${q}${item.unit}で正しい`
+      )
+    )
+  );
+}
+
 /**
  * 入れ物（1袋12ロールなど）を後から設定した商品で、それ以前の記録を「入れ物の数」として換算し直す。
  * 自動で出すのは、入れ物なしで記録した入庫（packSize=1）がある場合だけ。
@@ -271,10 +322,8 @@ export async function offerPackConversion(itemId, { manual = false } = {}) {
   const repo = app.repo;
   const item = repo.items.get(itemId);
   if (!item || !(item.packSize > 1)) return;
-  const ops = repo.itemOps(itemId);
-  const active = activeOpIds(ops);
-  const plain = ops.filter((o) => active.has(o.id) && o.type === 'receive' && o.packSize === 1);
-  if (!manual && !plain.length) return;
+  const plain = plainReceives(itemId);
+  if (!manual && (!plain.length || isDismissed(itemId, plain))) return;
   const n = item.packSize;
   const pu = item.packUnit || '箱';
   const u = item.unit;
@@ -635,7 +684,7 @@ export function itemFormScreen(id, params = {}) {
       if (prev) {
         toast('保存しました');
         history.length > 1 ? history.back() : go(`#/item/${rec.id}`);
-        if (!(prev.packSize > 1) && rec.packSize > 1) setTimeout(() => offerPackConversion(rec.id), 400);
+        if (rec.packSize > 1) setTimeout(() => offerPackConversion(rec.id), 400);
       } else {
         go(`#/item/${rec.id}`);
         const ok = await confirmDialog({ title: '登録しました', message: `「${rec.name}」を登録しました。続けて入庫（購入）を記録しますか？`, ok: '入庫を記録', cancel: 'あとで' });

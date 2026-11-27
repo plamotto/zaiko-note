@@ -178,7 +178,7 @@ export function itemDetailScreen(id) {
     const rows = [
       ['単位', item.unit],
       ['JANコード', item.jan || '—'],
-      ['標準入数', item.packSize ? `${fmtQty(item.packSize)}${item.unit}/${item.packUnit || '箱'}` : '—'],
+      ['入れ物', item.packSize ? `1${item.packUnit || '箱'}に${fmtQty(item.packSize)}${item.unit}入り` : '—'],
       ['最終購入', v.lastPurchase ? formatDateJa(v.lastPurchase) : '—'],
       ['登録日時', formatDateTime(item.createdAt)],
       ['更新日時', formatDateTime(item.updatedAt)],
@@ -261,7 +261,8 @@ export function itemDetailScreen(id) {
 }
 
 // ───────────── 商品登録・編集 ─────────────
-const UNITS = ['個', '本', '枚', '袋', '箱', '巻', 'ロール', 'セット', 'パック', '組', 'kg', 'L', 'm'];
+const UNITS = ['個', '枚', '本', 'ロール', '巻', '袋', '箱', 'セット', '組', 'パック', 'kg', 'L', 'm'];
+const PACK_UNITS = ['袋', '箱', 'パック', 'ケース', 'セット', '束'];
 
 export function itemFormScreen(id, params = {}) {
   const repo = app.repo;
@@ -279,14 +280,70 @@ export function itemFormScreen(id, params = {}) {
   let dirty = false;
 
   const nameEl = h('input', { class: 'input', placeholder: '例：ニトリル手袋 M 粉なし', value: prev?.name || params.name || '', autocomplete: 'off', enterkeyhint: 'next' });
-  const unitEl = h('input', { class: 'input', placeholder: '例：個', value: prev?.unit || '', list: 'dl-units', style: { maxWidth: '140px' } });
-  const unitChips = h('div', { class: 'chips', style: { padding: '2px 0 0', margin: 0 } });
-  const renderUnitChips = () => {
-    clear(unitChips);
-    for (const u of UNITS) unitChips.appendChild(h('button', { type: 'button', class: 'chip' + (unitEl.value === u ? ' on' : ''), onclick: () => ((unitEl.value = u), renderUnitChips(), (dirty = true)) }, u));
+  // 単位はチップで選ぶ。リストにない単位だけ「その他」欄に入れる
+  let unitVal = prev?.unit || '';
+  let packVal = prev?.packUnit || '';
+  const unitEl = h('input', { class: 'input', placeholder: 'その他', value: UNITS.includes(unitVal) ? '' : unitVal });
+  const unitChips = h('div', { class: 'cd-chips' });
+  const packSizeEl = h('input', { class: 'input num', inputmode: 'numeric', placeholder: '50', value: prev?.packSize ?? '' });
+  const packUnitEl = h('input', { class: 'input', placeholder: 'その他', value: PACK_UNITS.includes(packVal) ? '' : packVal });
+  const packChips = h('div', { class: 'cd-chips' });
+  const packSizeRow = h('div', { class: 'cd-size' });
+  const countPreview = h('div', { class: 'cd-preview' });
+  let packOn = !!(prev?.packUnit || prev?.packSize);
+  const chip = (label, on, onclick) => h('button', { type: 'button', class: 'chip' + (on ? ' on' : ''), onclick }, label);
+  const sizePre = h('span');
+  const sizePost = h('span');
+  packSizeRow.append(sizePre, packSizeEl, sizePost);
+  const renderPreview = () => {
+    const u = unitVal;
+    const pu = packVal || '箱';
+    const size = packSizeEl.value.trim();
+    packSizeRow.hidden = !packOn;
+    sizePre.textContent = `1${pu}に`;
+    sizePost.textContent = `${u || '個'}入り`;
+    clear(countPreview);
+    countPreview.className = 'cd-preview';
+    if (!u) countPreview.append('↑ 在庫を数える単位を選んでください');
+    else if (packOn && pu === u) {
+      countPreview.classList.add('warn');
+      countPreview.append(
+        h('b', null, `入れ物と中身が同じ「${u}」になっています。`),
+        h('br'),
+        '①の中身の単位を変えてください。例：ゴミ袋なら中身は「枚」、入れ物は「袋」（1袋に50枚入り）',
+        h('div', { class: 'cd-fix' }, ...['枚', '個', '本'].map((x) => h('button', { type: 'button', class: 'btn sm', onclick: () => ((unitVal = x), (unitEl.value = ''), (dirty = true), renderCount()) }, `中身を「${x}」にする`)))
+      );
+    } else if (packOn && !size) countPreview.append(`1${pu}に何${u}入っているかを入力してください`);
+    else if (packOn) countPreview.append(h('b', null, `1${pu} ＝ ${size}${u}`), `　在庫は「${u}」で数えます。入庫は「2${pu}＋バラ10${u}」のように入力でき、1${u}あたりの単価も自動で出ます`);
+    else countPreview.append(`在庫は「${u}」で数えます。袋や箱でまとめ買いする物は②で入れ物を選ぶと、入庫と単価計算が楽になります`);
   };
-  unitEl.addEventListener('input', renderUnitChips);
-  renderUnitChips();
+  const renderCount = () => {
+    const u = unitVal;
+    const pu = packVal;
+    clear(unitChips);
+    for (const x of UNITS) unitChips.appendChild(chip(x, u === x, () => ((unitVal = x), (unitEl.value = ''), (dirty = true), renderCount())));
+    unitChips.appendChild(unitEl);
+    clear(packChips);
+    packChips.appendChild(chip('なし', !packOn, () => ((packOn = false), (packVal = ''), (packUnitEl.value = ''), (packSizeEl.value = ''), (dirty = true), renderCount())));
+    for (const x of PACK_UNITS) packChips.appendChild(chip(x, packOn && pu === x, () => ((packOn = true), (packVal = x), (packUnitEl.value = ''), (dirty = true), renderCount(), packSizeEl.value || packSizeEl.focus())));
+    packChips.appendChild(packUnitEl);
+    renderPreview();
+  };
+  // 入力中の欄はフォーカスを保つため、チップの選択表示とプレビューだけ更新する
+  const syncChips = (box, val) => box.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c.textContent === val));
+  unitEl.addEventListener('input', () => {
+    unitVal = unitEl.value.trim();
+    syncChips(unitChips, unitVal);
+    renderPreview();
+  });
+  packUnitEl.addEventListener('input', () => {
+    packVal = packUnitEl.value.trim();
+    packOn = !!packVal || !!packSizeEl.value.trim();
+    syncChips(packChips, packOn ? packVal : 'なし');
+    renderPreview();
+  });
+  packSizeEl.addEventListener('input', renderPreview);
+  renderCount();
   const catSel = h('select', { class: 'select' });
   const fillCats = (v) => {
     clear(catSel);
@@ -314,10 +371,6 @@ export function itemFormScreen(id, params = {}) {
   const makerEl = h('input', { class: 'input', value: prev?.maker || '', list: 'dl-makers' });
   const modelEl = h('input', { class: 'input', value: prev?.model || '' });
   const specEl = h('input', { class: 'input', placeholder: '例：Mサイズ / 30cm×100m', value: prev?.spec || '' });
-  const packSizeEl = h('input', { class: 'input num', inputmode: 'numeric', placeholder: '50', value: prev?.packSize ?? '' });
-  const packUnitEl = h('input', { class: 'input', placeholder: '袋', value: prev?.packUnit || '' });
-  const packUnitLabel = h('span', null, prev?.unit || '個');
-  unitEl.addEventListener('input', () => (packUnitLabel.textContent = unitEl.value.trim() || '個'));
   const urlsEl = h('textarea', { class: 'textarea', placeholder: 'https://…（1行に1つ）', inputmode: 'url' });
   urlsEl.value = (prev?.urls || []).join('\n');
   const memoEl = h('textarea', { class: 'textarea', placeholder: '保管のコツ、使い方など' });
@@ -474,11 +527,19 @@ export function itemFormScreen(id, params = {}) {
     field('写真', photoStrip, { hint: '先頭がメイン写真になります。写真なしでも登録できます。' }),
     field('商品名', nameEl, { required: true }),
     dupBox,
-    field('基本数量単位', h('div', null, unitEl, unitChips), { required: true, hint: '在庫はこの単位（最小管理単位）で数えます' }),
     field(
-      '入れ物（任意）',
-      h('div', { class: 'pack-def' }, h('span', null, '1'), packUnitEl, h('span', null, 'に'), packSizeEl, packUnitLabel, h('span', null, '入り')),
-      { hint: '例：1袋に50個入り。入庫のとき「2袋＋バラ12個」のように入力でき、1個あたりの単価も自動で計算します' }
+      '数え方',
+      h(
+        'div',
+        { class: 'count-def' },
+        h('div', { class: 'cd-label' }, h('b', null, '① 中身の単位'), h('span', null, '1つずつ数えるときの単位（ゴミ袋なら「枚」）')),
+        unitChips,
+        h('div', { class: 'cd-label' }, h('b', null, '② まとめ売りの入れ物'), h('span', null, '任意・袋や箱で買う物だけ')),
+        packChips,
+        packSizeRow,
+        countPreview
+      ),
+      { required: true }
     ),
     h('div', { class: 'row2' }, field('カテゴリ', catSel), field('警告ライン', thrEl, { hint: 'この数以下で「在庫少」' })),
     field('JANコード', h('div', { class: 'inline-row' }, janEl, scanBtn)),
@@ -503,13 +564,21 @@ export function itemFormScreen(id, params = {}) {
       const ok = await confirmDialog({ title: '重複の可能性があります', message: `「${dups[0].item.name}」と${dups[0].reason === 'jan' ? 'JANコード' : '商品名'}が一致しています。\n同じ商品なら既存商品に入庫してください。別の商品として登録しますか？`, ok: '別商品として登録' });
       if (!ok) return;
     }
+    if (packOn && packVal === unitVal && unitVal) {
+      const ok = await confirmDialog({ title: '入れ物と中身が同じ単位です', message: `「1${unitVal}に${packSizeEl.value || '?'}${unitVal}入り」になります。\nゴミ袋なら中身は「枚」、入れ物は「袋」にしてください。このまま保存しますか？`, ok: 'このまま保存' });
+      if (!ok) return;
+    }
+    if (packOn && !packSizeEl.value.trim()) {
+      packOn = false;
+      packVal = '';
+    }
     saveBtn.disabled = true;
     try {
       const rec = await repo.saveItem(
         {
           id: prev?.id,
           name: nameEl.value,
-          unit: unitEl.value,
+          unit: unitVal,
           categoryId: catSel.value === '__new' ? null : catSel.value || null,
           jan: janEl.value,
           threshold: thrEl.value,
@@ -517,7 +586,7 @@ export function itemFormScreen(id, params = {}) {
           model: modelEl.value,
           spec: specEl.value,
           packSize: packSizeEl.value,
-          packUnit: packUnitEl.value,
+          packUnit: packOn ? packVal : '',
           urls: urlsEl.value,
           memo: memoEl.value,
           photoIds: photos.map((p) => p.id),

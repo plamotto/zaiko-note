@@ -208,6 +208,27 @@ suite('商品管理（IndexedDB）', () => {
   });
 });
 
+suite('入れ物を後から設定したときの記録の換算', () => {
+  test('「2ロール」を「2袋（24ロール）」に直す', { input: '入れ物なしで2ロール¥1,596(税抜)入庫・1ロール使用 → 1袋12ロールを設定 → 12倍に換算', expected: '入庫24ロール(2袋×12)、使用12、在庫12ロール、1ロール¥66.5、在庫金額¥798、換算記録が残る' }, async () => {
+    const repo = await freshRepo();
+    const { A, item } = await base(repo);
+    await repo.addOp('receive', { itemId: item.id, locationId: A.id, packCount: 2, packSize: 1, amount: '1596', tax: 'excl', date: D(3) });
+    await repo.addOp('consume', { itemId: item.id, locationId: A.id, qty: 1, date: D(2) });
+    eq(repo.ledger(item.id).total, 1);
+    await repo.saveItem({ ...repo.items.get(item.id), packSize: 12, packUnit: '袋' });
+    await repo.scaleItemQuantities(item.id, 12, { packUnit: '袋' });
+    const L = repo.ledger(item.id);
+    eq(L.total, 12);
+    const rc = repo.itemOps(item.id).find((o) => o.type === 'receive');
+    eq([rc.packCount, rc.packSize, rc.qty, rc.packUnit, rc.amount], [2, 12, 24, '袋', '1596']);
+    const v = valuation(L.portions, L.lots);
+    eq(formatFrac(v.avg.excl, 2), '¥66.50');
+    eq(formatFrac(v.groups.excl.value, 0), '¥798');
+    eq(repo.items.get(item.id).unitHistory.length, 1);
+    await rejects(() => repo.scaleItemQuantities(item.id, 1), 'INVALID');
+  });
+});
+
 suite('CSV取り込み', () => {
   const header = '商品ID,商品名,単位,カテゴリ,JANコード,標準入数,入数単位,警告ライン,入庫数量,入数,金額,税区分,入庫日,保管場所,棚卸数量,棚卸場所,棚卸日';
   test('新規一括登録＋入庫（場所・カテゴリ自動作成）', { input: '2行：新規商品2件、1行目は入庫3箱×100/¥3000税込/倉庫B', expected: '商品2件追加、入庫履歴1件、倉庫Bと事務用品カテゴリを作成、在庫300' }, async () => {

@@ -6,7 +6,7 @@ import { openOpDetail } from './history.js';
 import { processImageFile } from './photo.js';
 import { formatDateJa, formatDateTime, uuid } from '../core/util.js';
 import { formatUnit, formatPerUnit, formatMoneyStr, unitPrice, TAX_LABEL } from '../core/money.js';
-import { opOrder } from '../core/ledger.js';
+import { opOrder, activeOpIds } from '../core/ledger.js';
 import { findDuplicates, janStatus, normalizeJan } from '../core/text.js';
 
 // ───────────── 商品詳細 ─────────────
@@ -215,6 +215,9 @@ export function itemDetailScreen(id) {
         { class: 'group', style: { margin: 0 } },
         h('button', { class: 'cell', onclick: () => (sheet.close(), go(`#/item/${id}/edit`)) }, h('span', { class: 'lead' }, icon('edit')), h('span', { class: 'grow label' }, '商品情報を編集')),
         h('button', { class: 'cell', onclick: () => (sheet.close(), go(`#/history?item=${id}`)) }, h('span', { class: 'lead' }, icon('clock')), h('span', { class: 'grow label' }, 'この商品の履歴')),
+        item.packSize > 1 && repo.itemOps(id).length
+          ? h('button', { class: 'cell', onclick: () => (sheet.close(), offerPackConversion(id, { manual: true })) }, h('span', { class: 'lead' }, icon('box')), h('div', { class: 'grow' }, h('div', { class: 'label' }, `これまでの記録を${item.packUnit || '箱'}の数として直す`), h('div', { class: 'desc' }, `入れ物を設定する前の「2」を「2${item.packUnit || '箱'}＝${2 * item.packSize}${item.unit}」に直します`)))
+          : null,
         item.archived
           ? h('button', { class: 'cell', onclick: async () => (sheet.close(), await repo.setArchived(id, false), toast('アーカイブを解除しました')) }, h('span', { class: 'lead accent' }, icon('unarchive')), h('span', { class: 'grow label' }, 'アーカイブを解除'))
           : h('button', { class: 'cell', onclick: () => (sheet.close(), archive(item, v)) }, h('span', { class: 'lead warn' }, icon('archive')), h('div', { class: 'grow' }, h('div', { class: 'label' }, 'アーカイブ'), h('div', { class: 'desc' }, '一覧から隠します。履歴は保持されます'))),
@@ -258,6 +261,40 @@ export function itemDetailScreen(id) {
 
   update();
   return { el, update };
+}
+
+/**
+ * 入れ物（1袋12ロールなど）を後から設定した商品で、それ以前の記録を「入れ物の数」として換算し直す。
+ * 自動で出すのは、入れ物なしで記録した入庫（packSize=1）がある場合だけ。
+ */
+export async function offerPackConversion(itemId, { manual = false } = {}) {
+  const repo = app.repo;
+  const item = repo.items.get(itemId);
+  if (!item || !(item.packSize > 1)) return;
+  const ops = repo.itemOps(itemId);
+  const active = activeOpIds(ops);
+  const plain = ops.filter((o) => active.has(o.id) && o.type === 'receive' && o.packSize === 1);
+  if (!manual && !plain.length) return;
+  const n = item.packSize;
+  const pu = item.packUnit || '箱';
+  const u = item.unit;
+  const total = repo.ledger(itemId).total ?? 0;
+  const recv = plain.reduce((a, o) => a + o.qty, 0);
+  const lines = [
+    `入れ物（1${pu}＝${n}${u}）を設定する前の記録は、数がそのまま「${u}」で入っています。`,
+    recv ? `例：入庫 ${recv}${u} → ${recv}${pu}（${recv * n}${u}）` : null,
+    `今の在庫 ${fmtQty(total)}${u} → ${fmtQty(total * n)}${u}（${fmtQty(total)}${pu}）`,
+    '',
+    `これまでの入庫・使用・移動・棚卸しの数をすべて${n}倍にします。購入金額は変わらないので、1${u}あたりの単価は正しく計算し直されます。`,
+  ].filter((x) => x != null);
+  const ok = await confirmDialog({ title: `これまでの記録を「${pu}」の数として直しますか？`, message: lines.join('\n'), ok: `${n}倍に直す`, cancel: 'このまま' });
+  if (!ok) return;
+  try {
+    await repo.scaleItemQuantities(itemId, n, { packUnit: pu });
+    toast(`記録を直しました：在庫 ${fmtQty(total * n)}${u}`);
+  } catch (e) {
+    toastError(e);
+  }
 }
 
 // ───────────── 商品登録・編集 ─────────────
@@ -598,6 +635,7 @@ export function itemFormScreen(id, params = {}) {
       if (prev) {
         toast('保存しました');
         history.length > 1 ? history.back() : go(`#/item/${rec.id}`);
+        if (!(prev.packSize > 1) && rec.packSize > 1) setTimeout(() => offerPackConversion(rec.id), 400);
       } else {
         go(`#/item/${rec.id}`);
         const ok = await confirmDialog({ title: '登録しました', message: `「${rec.name}」を登録しました。続けて入庫（購入）を記録しますか？`, ok: '入庫を記録', cancel: 'あとで' });

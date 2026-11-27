@@ -3,7 +3,7 @@
 
 import { openDb, getAll, getOne, writeTx, normalizeError, deleteDb } from './db.js';
 import { replay, activeOpIds, opStatus, OP_LABEL } from '../core/ledger.js';
-import { parseMoneyInput } from '../core/money.js';
+import { parseMoneyInput, toCents, fromCents } from '../core/money.js';
 import { normalizeJan, normalizeName } from '../core/text.js';
 import { DomainError, uuid, nowIso, today, isValidDate, isPosInt, isNonNegInt, formatDateJa, clone } from '../core/util.js';
 
@@ -352,6 +352,7 @@ export class Repo {
         ...data,
         archived: prev?.archived ?? false,
         archivedAt: prev?.archivedAt ?? null,
+        unitHistory: prev?.unitHistory,
         createdAt: prev?.createdAt || now,
         updatedAt: now,
       };
@@ -372,6 +373,49 @@ export class Repo {
       const rec = { ...it, archived, archivedAt: archived ? nowIso() : null, updatedAt: nowIso() };
       await this._commit({ put: { items: [rec] } });
       return rec;
+    });
+  }
+
+  /**
+   * 記録の数をまとめて換算（例：入れ物を後から設定し、これまでの「2」を「2袋＝24ロール」に直す）。
+   * この商品のすべての操作（訂正前の記録を含む）の数量を factor 倍する。購入総額は変えないので1個あたりの単価は 1/factor になる。
+   * 入庫は「packCount 個の入れ物（1つ packSize×factor）」として記録し直す。棚卸しの単価（1個あたり）は 1/factor にし、1円未満は四捨五入（銭単位）。
+   * 換算の記録は item.unitHistory に残す。
+   */
+  scaleItemQuantities(itemId, factor, { packUnit } = {}) {
+    return this._serial(async () => {
+      const it = this.items.get(itemId);
+      if (!it) throw new DomainError('NOT_FOUND', '商品が見つかりません');
+      if (!isPosInt(factor) || factor < 2 || factor > 100000) throw new DomainError('INVALID', '倍率は2以上の整数で指定してください');
+      const f = factor;
+      const mulAlloc = (a) => (Array.isArray(a) ? a.map((x) => ({ ...x, qty: x.qty * f })) : a);
+      const ops = this.itemOps(itemId).map((o) => {
+        const n = { ...o };
+        if (o.type === 'receive') {
+          n.packSize = o.packSize * f;
+          n.looseQty = (o.looseQty ?? 0) * f;
+          n.qty = o.qty * f;
+          if (packUnit && o.packSize === 1 && !o.looseQty) n.packUnit = packUnit;
+        } else if (o.type === 'consume' || o.type === 'move') {
+          n.qty = o.qty * f;
+          n.alloc = mulAlloc(o.alloc);
+        } else if (o.type === 'adjust') {
+          n.counted = o.counted * f;
+          n.alloc = mulAlloc(o.alloc);
+          if (o.unitAmount != null) {
+            const c = toCents(o.unitAmount);
+            n.unitAmount = fromCents((c * 2n + BigInt(f)) / (BigInt(f) * 2n));
+          }
+        }
+        return n;
+      });
+      // 換算後も再計算できることを確認
+      const r = replay(ops);
+      if (!r.ok) throw new DomainError('INVALID', '換算後の再計算に失敗しました：' + r.error.message);
+      const now = nowIso();
+      const rec = { ...it, unitHistory: [...(it.unitHistory || []), { at: now, factor: f, unit: it.unit }], updatedAt: now };
+      await this._commit({ put: { items: [rec], ops } });
+      return { ops: ops.length };
     });
   }
 

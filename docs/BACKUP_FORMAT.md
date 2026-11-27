@@ -125,6 +125,7 @@
 | photoIds | string[] | 写真の並び順。**先頭がメイン写真**。→ photos.id |
 | archived | boolean | |
 | archivedAt | datetime \| null | |
+| unitHistory | array \| 省略可 | v1.2.1。記録の数をまとめて換算した履歴 `[{at, factor, unit}]`（入れ物を後から設定し「2」を「2袋＝24」に直した等）。換算は該当商品の全操作の数量を factor 倍し、購入総額は変えない |
 | createdAt / updatedAt | datetime | |
 
 ※ 在庫数・ロット残数は**保存していません**。必ず ops から再計算します（§4）。

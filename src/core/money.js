@@ -99,6 +99,16 @@ export function formatUnit(frac) {
   return formatFrac(frac, 2);
 }
 
+/** 分かりやすい単価表示：10円以上は円単位に四捨五入（割り切れないときは「約」）、10円未満は小数2桁まで。frac は銭単位の有理数 */
+export function formatPerUnit(frac) {
+  const exactCents = frac.d === 1n;
+  if (Frac.roundCents(frac) >= 1000n) {
+    const exactYen = exactCents && frac.n % 100n === 0n;
+    return `${exactYen ? '' : '約'}¥${yenFmt.format(Frac.roundYen(frac))}`;
+  }
+  return `${exactCents ? '' : '約'}${formatFrac(frac, 2)}`;
+}
+
 export function formatMoneyStr(s) {
   if (s == null) return '価格未設定';
   return formatFrac(Frac.of(toCents(s)), 2);

@@ -170,10 +170,11 @@ type 別の項目：
 | lotId | string | ロット（購入分）ID。新規は自身の id。訂正時は元の lotId を引き継ぐ |
 | locationId | string | → locations.id |
 | detail | string | 詳細位置（例：棚2・上段） |
-| packCount | integer ≥1 | 購入数量（入れ物の数） |
+| packCount | integer ≥0 | 購入数量（入れ物の数）。バラのみの場合は 0 |
 | packSize | integer ≥1 | 入数（入れ物1つあたりの基本単位数。バラは1） |
 | packUnit | string | 入れ物の単位 |
-| qty | integer | = packCount × packSize（検証すること） |
+| looseQty | integer ≥0 \| 省略 | 入れ物とは別のバラの数（v1.2 で追加。省略時は 0） |
+| qty | integer | = packCount × packSize + looseQty（検証すること） |
 | amount | money \| null | 購入総額 |
 | tax | `incl` \| `excl` \| null | 税込 / 税抜。amount が null なら null |
 | purchaseDate | date \| null | 購入日 |

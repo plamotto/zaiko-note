@@ -347,7 +347,7 @@ export function exportItemsCsv(repo) {
 }
 
 export function exportPurchasesCsv(repo) {
-  const rows = [['履歴ID', '商品ID', '商品名', '状態', '購入日', '入庫日', '保管日', '保管場所', '詳細位置', '購入数量', '入数', '入数単位', '合計数量', '単位', '金額', '税区分', '単価', '残数', '購入店・仕入先', '購入URL', 'メモ', '記録日時']];
+  const rows = [['履歴ID', '商品ID', '商品名', '状態', '購入日', '入庫日', '保管日', '保管場所', '詳細位置', '購入数量', '入数', '入数単位', '合計数量', '単位', '金額', '税区分', '単価', '残数', '購入店・仕入先', '購入URL', 'メモ', '記録日時', 'バラ数量']];
   const ops = [...repo.ops.values()].filter((o) => o.type === 'receive').sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.seq - b.seq));
   const STATE = { active: '有効', voided: '取り消し', superseded: '訂正済み（旧）', inactive: '無効' };
   for (const op of ops) {
@@ -378,6 +378,7 @@ export function exportPurchasesCsv(repo) {
       op.url,
       op.memo,
       op.createdAt,
+      op.looseQty || '',
     ]);
   }
   return toCsv(rows);

@@ -1,7 +1,7 @@
 // 画面間で共有する表示ロジック
 import { h, icon, photoImg } from './dom.js';
 import { valuation, packBreakdown, stockStatus, STATUS_LABEL, OP_LABEL } from '../core/ledger.js';
-import { formatFrac, formatUnit, formatMoneyStr, TAX_LABEL } from '../core/money.js';
+import { formatFrac, formatUnit, formatMoneyStr, formatPerUnit, unitPrice, TAX_LABEL } from '../core/money.js';
 import { normalizeForSearch } from '../core/text.js';
 import { formatDateJa } from '../core/util.js';
 
@@ -104,6 +104,25 @@ export function itemView(repo, item, locs = null) {
   return { ok: true, ledger: l, total, allTotal: l.total, status, byLoc, valuation: v, unitPrice: unit, lastPurchase: lastDate, lastActivity };
 }
 
+/** 最新の購入（価格あり）の1単位あたり単価。例：{ text: '1ロール 約¥67', tax: 'incl' } */
+export function latestUnitPrice(repo, item) {
+  const ops = repo.itemOps(item.id).filter((o) => o.type === 'receive' && o.amount != null);
+  if (!ops.length) return null;
+  const st = repo.opStatuses(item.id);
+  const act = ops.filter((o) => st.get(o.id)?.state === 'active').sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.seq - a.seq));
+  const op = act[0];
+  if (!op) return null;
+  const up = unitPrice({ amount: op.amount, qty: op.qty });
+  return { text: `1${item.unit} ${formatPerUnit(up)}`, tax: op.tax, exact: formatUnit(up), op };
+}
+
+/** 入庫の内訳（例：2袋×12枚 ＋ バラ5枚） */
+export function receiveBreakdown(op, unit) {
+  const loose = op.looseQty || 0;
+  if (op.packSize > 1) return `${op.packCount}${op.packUnit || '箱'}×${op.packSize}${unit}${loose ? ` ＋ バラ${loose}${unit}` : ''}`;
+  return `${fmtQty(op.qty)}${unit}`;
+}
+
 export function packText(item, total) {
   const b = packBreakdown(total, item.packSize);
   if (!b) return null;
@@ -174,7 +193,7 @@ export function describeOp(repo, op, effect) {
   switch (op.type) {
     case 'receive': {
       const price = op.amount != null ? `${formatMoneyStr(op.amount)}（${TAX_LABEL[op.tax]}）` : '価格未設定';
-      const packs = op.packSize > 1 ? `${op.packCount}${op.packUnit || '箱'}×${op.packSize}${u}` : '';
+      const packs = op.packSize > 1 ? receiveBreakdown(op, u) : '';
       return { title: `${OP_LABEL.receive}${op.corrects ? '（訂正）' : ''}`, sub: [L(op.locationId) + (op.detail ? `・${op.detail}` : ''), packs, price, op.supplier].filter(Boolean).join(' / '), qty: `+${fmtQty(op.qty)}`, sign: 'plus' };
     }
     case 'consume':

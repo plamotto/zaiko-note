@@ -569,3 +569,54 @@ input[type="date"].input { min-height: 48px; display: block; }
 .scope-bar button { flex: 1; min-height: 38px; border-radius: 9px; font-size: 14.5px; font-weight: 650; color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
 .scope-bar button i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .scope-bar button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); }
+
+/* 入庫時の単価計算 */
+.price-calc { flex-direction: column; gap: 4px; }
+.price-calc .pc-row { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.price-calc .pc-main { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.price-calc .pc-main b { font-size: 24px; font-weight: 750; }
+.unit-price { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.unit-line { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 14px; }
+.unit-line b { font-size: 18px; font-weight: 750; color: var(--accent-text); }
+.pack-def { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.pack-def .input { min-width: 0; text-align: center; }
+.pack-def .input:nth-of-type(1) { flex: 0 0 76px; }
+.pack-def .input:nth-of-type(2) { flex: 0 0 84px; }
+.pack-def span { white-space: nowrap; font-size: 15px; }
+
+/* 印刷用の選択モード */
+.sel-row { cursor: pointer; }
+.sel-row.on { box-shadow: 0 0 0 2px var(--accent) inset, var(--shadow-1); }
+.sel-check { width: 26px; height: 26px; border-radius: 13px; border: 2px solid var(--line-strong); flex: none; display: grid; place-items: center; color: var(--accent-ink); }
+.sel-row.on .sel-check { background: var(--accent); border-color: var(--accent); }
+.sel-check svg { width: 16px; height: 16px; }
+.sel-bar { position: fixed; left: 0; right: 0; bottom: calc(var(--tabbar-h) + var(--safe-b)); z-index: 35; display: flex; gap: 8px; padding: 10px 12px; background: var(--tabbar-bg); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-top: 1px solid var(--line); }
+.sel-bar .btn { flex: 1; }
+
+/* 印刷プレビュー */
+.print-cols { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.print-col { display: inline-flex; align-items: center; gap: 6px; font-size: 14.5px; min-height: 36px; }
+.print-col input { width: 20px; height: 20px; }
+.print-sheet { margin: 16px 12px 0; background: #fff; color: #111; border-radius: 12px; padding: 18px 14px; box-shadow: var(--shadow-1); overflow-x: auto; }
+.ps-head h1 { font-size: 20px; margin: 0; }
+.ps-meta { font-size: 12px; color: #555; margin: 2px 0 10px; }
+.ps-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ps-table th, .ps-table td { border: 1px solid #bbb; padding: 5px 6px; vertical-align: top; text-align: left; }
+.ps-table th { background: #f0f0ec; font-weight: 700; white-space: nowrap; }
+.ps-table td.n { text-align: center; width: 28px; }
+.ps-table td.q { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ps-table td.pl { white-space: pre-line; }
+.ps-table td.box { min-width: 64px; }
+.ps-table .nm { font-weight: 650; }
+.ps-table .sub { font-size: 10.5px; color: #666; }
+.ps-total { margin-top: 10px; font-size: 12.5px; text-align: right; font-weight: 650; }
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html, body { background: #fff !important; }
+  .tabbar, .topbar, .print-controls, .fab, .toast-wrap, .sel-bar, .banner { display: none !important; }
+  .view { padding: 0 !important; max-width: none !important; animation: none !important; }
+  .print-sheet { margin: 0 !important; padding: 0 !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
+  .ps-table { font-size: 10.5pt; }
+  .ps-table tr { break-inside: avoid; }
+  .ps-table thead { display: table-header-group; }
+}

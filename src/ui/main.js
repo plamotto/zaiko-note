@@ -10,6 +10,7 @@ import { itemDetailScreen, itemFormScreen } from './item.js';
 import { placesScreen, placeDetailScreen, manageScreen } from './places.js';
 import { scanScreen } from './scan.js';
 import { historyScreen } from './history.js';
+import { printScreen } from './print.js';
 import { settingsScreen, applyTheme, runBackup } from './settings.js';
 
 const DB = { main: 'zaiko-main', sample: 'zaiko-sample' };
@@ -47,6 +48,7 @@ function parseRoute() {
   else if (seg[0] === 'scan') (tab = 'scan'), (make = () => scanScreen());
   else if (seg[0] === 'history') (tab = 'history'), (make = () => historyScreen(params));
   else if (seg[0] === 'settings') (tab = 'settings'), (make = () => settingsScreen());
+  else if (seg[0] === 'print') make = () => printScreen();
   else make = () => inventoryScreen();
   return { key: raw, tab, make };
 }

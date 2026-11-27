@@ -135,7 +135,9 @@ export function replay(ops) {
     try {
       switch (op.type) {
         case 'receive': {
-          if (!isPosInt(op.packCount) || !isPosInt(op.packSize) || op.qty !== op.packCount * op.packSize) {
+          // 例：2袋（1袋12個）＋ バラ5個 → qty = 2×12 + 5 = 29。looseQty は v1.2 で追加（省略時0）
+          const loose = op.looseQty ?? 0;
+          if (!isNonNegInt(op.packCount) || !isPosInt(op.packSize) || !isNonNegInt(loose) || !isPosInt(op.qty) || op.qty !== op.packCount * op.packSize + loose) {
             throw err('INVALID_QTY', '入庫数量が不正です', op);
           }
           if (lots.has(op.lotId)) throw err('DUP_LOT', 'ロットIDが重複しています', op);
@@ -155,6 +157,7 @@ export function replay(ops) {
             initialQty: op.qty,
             packCount: op.packCount,
             packSize: op.packSize,
+            looseQty: op.looseQty ?? 0,
             price,
             purchaseDate: op.purchaseDate || null,
             supplier: op.supplier || '',

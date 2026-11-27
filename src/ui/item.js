@@ -1,11 +1,11 @@
 // 商品詳細・商品登録/編集
 import { h, icon, clear, openSheet, toast, toastError, field, notice, confirmDialog, photoImg, photoUrl, forgetPhoto, pickFile, seg, janWebSearch } from './dom.js';
-import { app, go, itemView, packText, statusBadge, fmtQty, moneyTiles, computabilityNote, describeOp, OP_ICON, topbar, divColor, emptyState } from './views.js';
+import { app, go, latestUnitPrice, receiveBreakdown, itemView, packText, statusBadge, fmtQty, moneyTiles, computabilityNote, describeOp, OP_ICON, topbar, divColor, emptyState } from './views.js';
 import { openOpSheet } from './ops.js';
 import { openOpDetail } from './history.js';
 import { processImageFile } from './photo.js';
 import { formatDateJa, formatDateTime, uuid } from '../core/util.js';
-import { formatUnit, formatMoneyStr, unitPrice, TAX_LABEL } from '../core/money.js';
+import { formatUnit, formatPerUnit, formatMoneyStr, unitPrice, TAX_LABEL } from '../core/money.js';
 import { opOrder } from '../core/ledger.js';
 import { findDuplicates, janStatus, normalizeJan } from '../core/text.js';
 
@@ -71,6 +71,10 @@ export function itemDetailScreen(id) {
         h('div', { class: 'small muted' }, '現在在庫'),
         h('div', { class: 'stock-big' }, h('span', { class: `qty num ${v.status}` }, fmtQty(v.total)), h('span', { class: 'qty-unit' }, item.unit)),
         pack ? h('div', { class: 'stock-ref' }, `参考：${pack}（1${item.packUnit || '箱'}${fmtQty(item.packSize)}${item.unit}換算・未開封数ではありません）`) : null,
+        (() => {
+          const up = latestUnitPrice(repo, item);
+          return up ? h('div', { class: 'unit-line' }, h('span', null, '最新の購入単価'), h('b', { class: 'num' }, up.text), h('span', { class: 'small muted' }, `（${TAX_LABEL[up.tax]}・${formatDateJa(up.op.date, { withYear: false })}購入）`)) : null;
+        })(),
         h('div', { class: 'stock-ref' }, item.threshold != null ? `警告ライン：${fmtQty(item.threshold)}${item.unit}以下で「在庫少」` : '警告ライン未設定（不足警告なし）'),
         v.byLoc.length
           ? h(
@@ -124,8 +128,8 @@ export function itemDetailScreen(id) {
             shown.map((lot) => {
               const op = repo.ops.get(lot.opId);
               const locs = v.ledger.portions.filter((p) => p.lotId === lot.lotId).map((p) => `${repo.locationName(p.locationId)} ${fmtQty(p.qty)}`);
-              const price = lot.price ? `${formatUnit(unitPrice(lot.price))}/${item.unit}・${TAX_LABEL[lot.price.tax]}` : '価格未設定';
-              const packs = lot.kind === 'purchase' && lot.packSize > 1 ? `${lot.packCount}${op?.packUnit || '箱'}×${lot.packSize}` : `${fmtQty(lot.initialQty)}${item.unit}`;
+              const price = lot.price ? `1${item.unit} ${formatPerUnit(unitPrice(lot.price))}・${TAX_LABEL[lot.price.tax]}` : '価格未設定';
+              const packs = lot.kind === 'purchase' && op ? receiveBreakdown(op, item.unit) : `${fmtQty(lot.initialQty)}${item.unit}`;
               return h(
                 'button',
                 { class: 'lot' + (lot.remaining ? '' : ' empty'), style: { width: '100%', textAlign: 'left' }, onclick: () => op && openOpDetail(op) },
@@ -310,8 +314,10 @@ export function itemFormScreen(id, params = {}) {
   const makerEl = h('input', { class: 'input', value: prev?.maker || '', list: 'dl-makers' });
   const modelEl = h('input', { class: 'input', value: prev?.model || '' });
   const specEl = h('input', { class: 'input', placeholder: '例：Mサイズ / 30cm×100m', value: prev?.spec || '' });
-  const packSizeEl = h('input', { class: 'input num', inputmode: 'numeric', placeholder: '例：100', value: prev?.packSize ?? '' });
-  const packUnitEl = h('input', { class: 'input', placeholder: '例：箱', value: prev?.packUnit || '' });
+  const packSizeEl = h('input', { class: 'input num', inputmode: 'numeric', placeholder: '50', value: prev?.packSize ?? '' });
+  const packUnitEl = h('input', { class: 'input', placeholder: '袋', value: prev?.packUnit || '' });
+  const packUnitLabel = h('span', null, prev?.unit || '個');
+  unitEl.addEventListener('input', () => (packUnitLabel.textContent = unitEl.value.trim() || '個'));
   const urlsEl = h('textarea', { class: 'textarea', placeholder: 'https://…（1行に1つ）', inputmode: 'url' });
   urlsEl.value = (prev?.urls || []).join('\n');
   const memoEl = h('textarea', { class: 'textarea', placeholder: '保管のコツ、使い方など' });
@@ -443,14 +449,13 @@ export function itemFormScreen(id, params = {}) {
     },
   }, icon('scan'), 'スキャン');
 
-  const detailsOpen = !!(prev && (prev.maker || prev.model || prev.spec || prev.packSize || prev.urls?.length || prev.memo));
-  const discBtn = h('button', { type: 'button', class: 'disclosure' + (detailsOpen ? ' open' : '') }, h('span', null, '詳細項目（メーカー・型番・入数・URL・メモ）'), icon('chevR'));
+  const detailsOpen = !!(prev && (prev.maker || prev.model || prev.spec || prev.urls?.length || prev.memo));
+  const discBtn = h('button', { type: 'button', class: 'disclosure' + (detailsOpen ? ' open' : '') }, h('span', null, '詳細（メーカー・型番・URL・メモ）'), icon('chevR'));
   const details = h(
     'div',
     { class: 'form' + (detailsOpen ? '' : ' hidden') },
     h('div', { class: 'row2' }, field('メーカー・ブランド', makerEl), field('型番・品番', modelEl)),
     field('規格・サイズ', specEl),
-    h('div', { class: 'row2' }, field('標準入数', packSizeEl, { hint: `1箱・1袋あたりの${unitEl.value || '数量'}` }), field('入れ物の単位', packUnitEl)),
     field('よく使う商品URL', urlsEl),
     field('メモ', memoEl)
   );
@@ -470,6 +475,11 @@ export function itemFormScreen(id, params = {}) {
     field('商品名', nameEl, { required: true }),
     dupBox,
     field('基本数量単位', h('div', null, unitEl, unitChips), { required: true, hint: '在庫はこの単位（最小管理単位）で数えます' }),
+    field(
+      '入れ物（任意）',
+      h('div', { class: 'pack-def' }, h('span', null, '1'), packUnitEl, h('span', null, 'に'), packSizeEl, packUnitLabel, h('span', null, '入り')),
+      { hint: '例：1袋に50個入り。入庫のとき「2袋＋バラ12個」のように入力でき、1個あたりの単価も自動で計算します' }
+    ),
     h('div', { class: 'row2' }, field('カテゴリ', catSel), field('警告ライン', thrEl, { hint: 'この数以下で「在庫少」' })),
     field('JANコード', h('div', { class: 'inline-row' }, janEl, scanBtn)),
     h('div', { style: { display: 'flex', gap: '8px', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: '-8px' } }, janHint, h('button', { type: 'button', class: 'btn ghost sm', style: { flex: 'none' }, onclick: () => (janEl.value.trim() ? janWebSearch(janEl.value) : toast('JANコードを入力してください')) }, icon('search'), 'ネットで調べる')),

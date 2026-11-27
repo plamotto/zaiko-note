@@ -1,10 +1,10 @@
 // 履歴タブと履歴詳細（訂正・取り消し）
 import { h, icon, clear, openSheet, toast, toastError, confirmDialog, seg } from './dom.js';
-import { app, go, describeOp, OP_ICON, fmtQty, topbar, emptyState, thumb, scopeBar, scopeLocs, opInScope } from './views.js';
+import { app, go, receiveBreakdown, describeOp, OP_ICON, fmtQty, topbar, emptyState, thumb, scopeBar, scopeLocs, opInScope } from './views.js';
 import { openOpSheet } from './ops.js';
 import { OP_LABEL, opOrder } from '../core/ledger.js';
 import { formatDateJa, formatDateTime, today } from '../core/util.js';
-import { formatMoneyStr, formatUnit, unitPrice, TAX_LABEL } from '../core/money.js';
+import { formatMoneyStr, formatUnit, formatPerUnit, unitPrice, TAX_LABEL } from '../core/money.js';
 import { normalizeForSearch } from '../core/text.js';
 
 const STATE_LABEL = { active: '有効', voided: '取り消し済み', superseded: '訂正済み（旧内容）', inactive: '無効' };
@@ -26,10 +26,10 @@ export function openOpDetail(op) {
   if (op.type === 'receive') {
     rows.push(
       ['保管場所', repo.locationName(op.locationId) + (op.detail ? `・${op.detail}` : '')],
-      ['購入数量', op.packSize > 1 ? `${op.packCount}${op.packUnit || '箱'} × ${op.packSize}${u}` : `${fmtQty(op.qty)}${u}`],
+      ['購入数量', receiveBreakdown(op, u)],
       ['合計数量', `${fmtQty(op.qty)}${u}`],
       ['購入総額', op.amount != null ? `${formatMoneyStr(op.amount)}（${TAX_LABEL[op.tax]}）` : '価格未設定'],
-      ['単価', op.amount != null ? `${formatUnit(unitPrice({ amount: op.amount, qty: op.qty }))}/${u}` : '—'],
+      ['単価', op.amount != null ? `1${u}あたり ${formatPerUnit(unitPrice({ amount: op.amount, qty: op.qty }))}（${formatUnit(unitPrice({ amount: op.amount, qty: op.qty }))}）` : '—'],
       ['購入日', op.purchaseDate ? formatDateJa(op.purchaseDate) : '—'],
       ['保管日', op.storedDate ? formatDateJa(op.storedDate) : '—'],
       ['購入店', op.supplier || '—']

@@ -309,3 +309,28 @@ suite('JANバーコード読み取り（合成画像）', () => {
     ok(r.votes >= 2);
   });
 });
+
+import { formatPerUnit as fpu } from '../src/core/money.js';
+
+suite('入れ物＋バラの入庫と単価表示', () => {
+  test('2袋（1袋12個）＋バラ5個の入庫', { input: 'packCount=2, packSize=12, looseQty=5, 金額 ¥1,450', expected: '在庫29個、1個 ¥50' }, () => {
+    const op = { id: 'lz1', seq: 900, order: 900, type: 'receive', itemId: 'i', lotId: 'lz1', packCount: 2, packSize: 12, looseQty: 5, qty: 29, amount: '1450', tax: 'incl', locationId: 'A', date: '2025-03-01' };
+    const r = replay([op]);
+    eq(r.total, 29);
+    eq(fpu(unitPrice(r.lots.get('lz1').price)), '¥50');
+  });
+  test('入れ物0・バラのみ／合計不一致はエラー', { input: 'packCount=0, looseQty=3 / qty が合計と不一致', expected: '在庫3 / INVALID_QTY' }, () => {
+    const base = { seq: 901, order: 901, type: 'receive', itemId: 'i', packSize: 10, amount: null, tax: null, locationId: 'A', date: '2025-03-01' };
+    eq(replay([{ ...base, id: 'lz2', lotId: 'lz2', packCount: 0, looseQty: 3, qty: 3 }]).total, 3);
+    eq(replay([{ ...base, id: 'lz3', lotId: 'lz3', packCount: 1, looseQty: 3, qty: 10 }]).error.code, 'INVALID_QTY');
+  });
+  test('分かりやすい単価表示', { input: '12ロール¥800 / 100枚¥2,970 / 300個¥3,000 / 3個¥1,000 / 500枚¥4,400 / 3個¥100 / 3個¥10', expected: '約¥67 / 約¥30 / ¥10 / 約¥333 / ¥8.80 / 約¥33 / 約¥3.33（10円以上は円単位、未満は銭まで）' }, () => {
+    eq(fpu(unitPrice({ amount: '800', qty: 12 })), '約¥67');
+    eq(fpu(unitPrice({ amount: '2970', qty: 100 })), '約¥30');
+    eq(fpu(unitPrice({ amount: '3000', qty: 300 })), '¥10');
+    eq(fpu(unitPrice({ amount: '1000', qty: 3 })), '約¥333');
+    eq(fpu(unitPrice({ amount: '4400', qty: 500 })), '¥8.80');
+    eq(fpu(unitPrice({ amount: '100', qty: 3 })), '約¥33');
+    eq(fpu(unitPrice({ amount: '10', qty: 3 })), '約¥3.33');
+  });
+});

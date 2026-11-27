@@ -427,9 +427,11 @@ export class Repo {
     const base = { itemId: input.itemId, type, date: this._checkDate(input.date, type === 'receive' ? '入庫日' : '操作日'), memo: String(input.memo ?? '').trim() };
     switch (type) {
       case 'receive': {
-        const packCount = this._qty(input.packCount, '購入数量');
+        const packCount = this._qty(input.packCount, '購入数量', { allowZero: true });
         const packSize = this._qty(input.packSize ?? 1, '入数');
-        const qty = packCount * packSize;
+        const looseQty = input.looseQty == null || input.looseQty === '' ? 0 : this._qty(input.looseQty, 'バラの数量', { allowZero: true });
+        const qty = packCount * packSize + looseQty;
+        if (qty < 1) throw new DomainError('INVALID_QTY', '数量を入力してください（1以上）');
         if (!Number.isSafeInteger(qty) || qty > 1e9) throw new DomainError('INVALID_QTY', '合計数量が大きすぎます');
         const amount = parseMoneyInput(input.amount);
         let tax = null;
@@ -443,6 +445,7 @@ export class Repo {
           detail: String(input.detail ?? '').trim(),
           packCount,
           packSize,
+          looseQty,
           packUnit: String(input.packUnit ?? '').trim(),
           qty,
           amount,

@@ -2,7 +2,7 @@
 import { h, icon, openSheet, toast, toastError, field, seg, stepper, notice, confirmDialog, clear } from './dom.js';
 import { app, fmtQty, packText, itemView, go, divColor, scopeLocs } from './views.js';
 import { today, formatDateJa, parseIntStrict } from '../core/util.js';
-import { parseMoneyInput, unitPrice, formatUnit, formatMoneyStr, formatFrac, Frac, toCents, TAX_LABEL } from '../core/money.js';
+import { parseMoneyInput, unitPrice, formatUnit, formatPerUnit, formatMoneyStr, formatFrac, Frac, toCents, TAX_LABEL } from '../core/money.js';
 import { OP_LABEL, replay } from '../core/ledger.js';
 
 const TITLES = { receive: '入庫', consume: '使用', move: '移動', adjust: '棚卸し' };
@@ -227,10 +227,11 @@ export function openOpSheet(type, item, opts = {}) {
     const lastInScope = [...repo.itemOps(item.id)].filter((o) => o.type === 'receive' && (!sl || sl.has(o.locationId))).sort((a, b) => b.seq - a.seq)[0];
     const locSel = locationSelect(repo, { value: p.locationId || opts.locationId || lastInScope?.locationId || (sl ? '' : lastRcv?.locationId) || '' });
     const detailEl = h('input', { class: 'input', placeholder: '例：棚2・上段', value: p.detail ?? (lastRcv?.locationId === locSel.value ? lastRcv.detail : '') ?? '', list: 'dl-detail' });
-    const packCount = stepper({ value: p.packCount ?? 1 }, { min: 1 });
+    const packCount = stepper({ value: p.packCount ?? 1 }, { min: 0 });
+    const looseCount = stepper({ value: p.looseQty ?? 0 }, { min: 0 });
     const packSize = h('input', { class: 'input num', inputmode: 'numeric', value: p.packSize ?? item.packSize ?? 1 });
     const packUnit = h('input', { class: 'input', value: p.packUnit ?? item.packUnit ?? '箱', placeholder: '箱' });
-    const unitCount = stepper({ value: p.packSize === 1 ? p.packCount : 1 }, { min: 1 });
+    const unitCount = stepper({ value: p.packSize === 1 ? p.qty : 1 }, { min: 1 });
     const amountEl = moneyInput(p.amount ?? '');
     let tax = p.tax || repo.settings.lastTax || 'incl';
     const taxSeg = seg(
@@ -248,26 +249,43 @@ export function openOpSheet(type, item, opts = {}) {
     const storedEl = dateInput(p.storedDate ?? today());
     const supplierEl = h('input', { class: 'input', placeholder: '例：モノタロウ', value: p.supplier || '', list: 'dl-supplier' });
     const urlEl = h('input', { class: 'input', type: 'url', inputmode: 'url', placeholder: 'https://', value: p.url || '' });
-    const calcEl = h('div', { class: 'calc' });
+    const calcEl = h('div', { class: 'calc price-calc' });
     const packBox = h('div', { class: 'form' });
     const unitBox = h('div', { class: 'form' });
+    const n = (el) => parseIntStrict(el.value) || 0;
     const qtyNow = () => {
-      if (mode === 'pack') return (parseIntStrict(packCount.input.value) || 0) * (parseIntStrict(packSize.value) || 0);
-      return parseIntStrict(unitCount.input.value) || 0;
+      if (mode === 'pack') return n(packCount.input) * n(packSize) + n(looseCount.input);
+      return n(unitCount.input);
     };
     const calc = () => {
       clear(calcEl);
       const q = qtyNow();
-      let price = '価格未設定';
+      const pu = packUnit.value.trim() || '箱';
+      const breakdown = mode === 'pack' ? `${n(packCount.input)}${pu}×${n(packSize)}${n(looseCount.input) ? ` ＋ バラ${n(looseCount.input)}` : ''}` : '';
+      calcEl.append(h('div', { class: 'pc-row' }, h('span', null, '合計'), h('b', { class: 'num' }, `${fmtQty(q)}${unit}`, breakdown ? h('span', { class: 'small' }, `（${breakdown}）`) : null)));
+      let a = null;
       try {
-        const a = parseMoneyInput(amountEl.value);
-        if (a != null && q > 0) price = `単価 ${formatUnit(unitPrice({ amount: a, qty: q }))}/${unit}（${TAX_LABEL[tax]}）`;
+        a = parseMoneyInput(amountEl.value);
       } catch {
-        price = '金額の形式が不正です';
+        calcEl.append(h('div', { class: 'pc-row' }, '金額の形式が不正です'));
+        return;
       }
-      calcEl.append(h('span', null, '合計 ', h('b', { class: 'num' }, `${fmtQty(q)}${unit}`)), h('span', null, price));
+      if (a == null || q <= 0) {
+        calcEl.append(h('div', { class: 'pc-row small' }, '購入総額を入れると、1' + unit + 'あたりの単価を自動計算します'));
+        return;
+      }
+      const up = unitPrice({ amount: a, qty: q });
+      calcEl.append(h('div', { class: 'pc-main' }, h('span', null, `1${unit}あたり`), h('b', { class: 'num' }, formatPerUnit(up)), h('span', { class: 'small' }, `（${TAX_LABEL[tax]}）`)));
+      const sub = [];
+      if (formatPerUnit(up).startsWith('約')) sub.push(`正確には ${formatUnit(up)}`);
+      if (mode === 'pack' && n(packSize) > 1) sub.push(`1${pu}（${n(packSize)}${unit}）あたり ${formatPerUnit(Frac.mulInt(up, n(packSize)))}`);
+      if (sub.length) calcEl.append(h('div', { class: 'pc-row small' }, sub.join(' ・ ')));
     };
-    packBox.append(field(`購入数量（${'単位：入れ物'}）`, packCount), h('div', { class: 'row2' }, field(`入数（1つあたりの${unit}数）`, packSize), field('入れ物の単位', packUnit)));
+    packBox.append(
+      h('div', { class: 'row2' }, field(`入れ物の数`, packCount), field('入れ物の単位', packUnit)),
+      field(`1${'つ'}あたりの入数（${unit}）`, packSize, { hint: `例：1袋50${unit}入りなら 50` }),
+      field(`バラ（${unit}）`, looseCount, { hint: '入れ物とは別に、ばらで買った数があれば' })
+    );
     unitBox.append(field(`数量（${unit}）`, unitCount));
     const modeSeg = seg(
       [
@@ -284,7 +302,7 @@ export function openOpSheet(type, item, opts = {}) {
     );
     if (mode !== 'pack') packBox.classList.add('hidden');
     else unitBox.classList.add('hidden');
-    for (const el of [packCount.input, packSize, unitCount.input, amountEl]) el.addEventListener('input', calc);
+    for (const el of [packCount.input, packSize, packUnit, looseCount.input, unitCount.input, amountEl]) el.addEventListener('input', calc);
     calc();
     const sameAsDate = h('button', { type: 'button', class: 'btn sm', onclick: () => (purchaseEl.value = dateEl.value) }, '入庫日と同じ');
     const suppliers = [...repo.ops.values()].filter((o) => o.type === 'receive').map((o) => o.supplier);
@@ -309,6 +327,7 @@ export function openOpSheet(type, item, opts = {}) {
         detail: detailEl.value,
         packCount: mode === 'pack' ? packCount.input.value : q,
         packSize: mode === 'pack' ? packSize.value : 1,
+        looseQty: mode === 'pack' ? looseCount.input.value : 0,
         packUnit: mode === 'pack' ? packUnit.value : '',
         amount: amountEl.value,
         tax: amountEl.value.trim() ? tax : null,

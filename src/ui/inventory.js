@@ -1,7 +1,24 @@
 // 在庫一覧（起動画面）
 import { h, icon, clear, openSheet, photoImg } from './dom.js';
-import { app, go, itemView, packText, statusBadge, thumb, locChip, searchText, matchQuery, fmtQty, emptyState, scopeLocs, inScope, scopeBar, alertCount } from './views.js';
+import { app, go, latestUnitPrice, itemView, packText, statusBadge, thumb, locChip, searchText, matchQuery, fmtQty, emptyState, scopeLocs, inScope, scopeBar, alertCount } from './views.js';
 import { openQuickActions, openOpSheet } from './ops.js';
+import { printSelection } from './print.js';
+
+// 印刷用の選択モード（null = 通常表示）
+let selecting = null;
+
+function selRow(repo, { item, v }, onToggle) {
+  const on = selecting.has(item.id);
+  return h(
+    'button',
+    { class: 'row sel-row' + (on ? ' on' : ''), role: 'checkbox', 'aria-checked': String(on), onclick: () => onToggle(item.id) },
+    h('span', { class: 'sel-check' }, on ? icon('check') : null),
+    thumb(repo, item),
+    h('div', { class: 'row-main' }, h('div', { class: 'row-name' }, item.name), h('div', { class: 'row-sub' }, statusBadge(v.status))),
+    h('div', { class: 'qty-btn', style: { borderLeft: 0 } }, h('div', null, h('span', { class: `qty num ${v.status}` }, fmtQty(v.total)), h('span', { class: 'qty-unit' }, item.unit)))
+  );
+}
+
 
 // 絞り込み状態はセッション中保持（表示形式・並び順は設定に保存）
 export const filters = { q: '', categoryId: null, locationId: null, divisionId: null, status: 'all', archived: false };
@@ -69,7 +86,7 @@ function listRow(repo, { item, v }) {
         'div',
         { class: 'row-main' },
         h('div', { class: 'row-name' }, item.name),
-        h('div', { class: 'row-sub' }, statusBadge(v.status), item.archived ? h('span', { class: 'badge arch' }, 'アーカイブ') : null, locs.length ? locs : h('span', { class: 'loc' }, '保管場所なし'), det ? h('span', { class: 'tiny faint' }, det) : null)
+        h('div', { class: 'row-sub' }, statusBadge(v.status), item.archived ? h('span', { class: 'badge arch' }, 'アーカイブ') : null, locs.length ? locs : h('span', { class: 'loc' }, '保管場所なし'), det ? h('span', { class: 'tiny faint' }, det) : null, (() => { const up = latestUnitPrice(repo, item); return up ? h('span', { class: 'unit-price num' }, up.text) : null; })())
       )
     ),
     h(
@@ -89,7 +106,7 @@ function card(repo, { item, v }) {
   return h(
     'div',
     { class: 'card' },
-    h('button', { style: { textAlign: 'left', display: 'block', width: '100%' }, onclick: () => go(`#/item/${item.id}`) }, cover, h('div', { class: 'body' }, h('div', { class: 'name' }, item.name), h('div', { class: 'meta' }, loc))),
+    h('button', { style: { textAlign: 'left', display: 'block', width: '100%' }, onclick: () => go(`#/item/${item.id}`) }, cover, h('div', { class: 'body' }, h('div', { class: 'name' }, item.name), h('div', { class: 'meta' }, loc), (() => { const up = latestUnitPrice(repo, item); return up ? h('div', { class: 'meta num' }, up.text) : null; })())),
     h(
       'div',
       { class: 'foot' },
@@ -138,16 +155,36 @@ export function inventoryScreen() {
   });
   const viewBtn = h('button', { class: 'icon-btn', 'aria-label': '表示切替', onclick: () => repo.saveSettings({ viewMode: repo.settings.viewMode === 'card' ? 'list' : 'card' }) });
   const sortBtn = h('button', { class: 'icon-btn', 'aria-label': '並び替え', onclick: openSort }, icon('sort'));
+  const selBtn = h('button', { class: 'btn ghost sm', onclick: () => ((selecting = selecting ? null : new Set()), update()) });
   const sub = h('div', { class: 'subtitle' });
   const chips = h('div', { class: 'chips' });
   const scopeHost = h('div');
-  const bar = h('header', { class: 'topbar' }, h('div', { class: 'title-row' }, h('h1', null, '在庫'), sortBtn, viewBtn), sub, scopeHost, h('div', { class: 'search', style: { marginTop: '8px' } }, icon('search'), searchInput, clearBtn), chips);
+  const bar = h('header', { class: 'topbar' }, h('div', { class: 'title-row' }, h('h1', null, '在庫'), selBtn, sortBtn, viewBtn), sub, scopeHost, h('div', { class: 'search', style: { marginTop: '8px' } }, icon('search'), searchInput, clearBtn), chips);
   const banners = h('div');
   const meta = h('div', { class: 'list-meta' });
   const listEl = h('div');
   el.append(bar, banners, meta, listEl);
   const fab = h('button', { class: 'fab', onclick: openAdd }, icon('plus'), '登録・入庫');
   el.appendChild(fab);
+  const selBar = h('div', { class: 'sel-bar hidden' });
+  el.appendChild(selBar);
+  let lastRows = [];
+  const toggle = (id) => {
+    selecting.has(id) ? selecting.delete(id) : selecting.add(id);
+    update();
+  };
+  function renderSelBar() {
+    selBar.classList.toggle('hidden', !selecting);
+    fab.classList.toggle('hidden', !!selecting);
+    clear(selBtn).append(selecting ? 'キャンセル' : '選択');
+    if (!selecting) return;
+    clear(selBar);
+    const allOn = lastRows.length && lastRows.every((r) => selecting.has(r.item.id));
+    selBar.append(
+      h('button', { class: 'btn', onclick: () => { if (allOn) selecting.clear(); else for (const r of lastRows) selecting.add(r.item.id); update(); } }, allOn ? '選択を解除' : '表示中をすべて選択'),
+      h('button', { class: 'btn primary', disabled: !selecting.size, onclick: () => { printSelection.ids = lastRows.filter((r) => selecting.has(r.item.id)).map((r) => r.item.id); for (const id of selecting) if (!printSelection.ids.includes(id)) printSelection.ids.push(id); selecting = null; go('#/print'); } }, icon('file'), `${selecting.size}件を印刷`)
+    );
+  }
 
   function openSort() {
     const { sortKey, sortDir } = repo.settings;
@@ -193,6 +230,8 @@ export function inventoryScreen() {
     const sb = scopeBar(repo);
     if (sb) scopeHost.appendChild(sb);
     const rows = computeRows(repo);
+    lastRows = rows;
+    renderSelBar();
     const locs = scopeLocs(repo);
     const all = [...repo.items.values()].filter((i) => !i.archived && inScope(repo, i, locs));
     const alerts = alertCount(repo);
@@ -234,8 +273,8 @@ export function inventoryScreen() {
       listEl.appendChild(emptyState('search', '該当する商品がありません', filters.q ? `「${filters.q}」に一致する商品が見つかりません。` : '絞り込み条件を変更してください。', h('button', { class: 'btn', onclick: reset }, '条件をリセット')));
       return;
     }
-    const container = h('div', { class: repo.settings.viewMode === 'card' ? 'grid' : 'list' });
-    const render = repo.settings.viewMode === 'card' ? card : listRow;
+    const container = h('div', { class: repo.settings.viewMode === 'card' && !selecting ? 'grid' : 'list' });
+    const render = selecting ? (rp, r) => selRow(rp, r, toggle) : repo.settings.viewMode === 'card' ? card : listRow;
     // 大量件数でも初期表示を軽くするため段階描画
     const first = rows.slice(0, 60);
     for (const r of first) container.appendChild(render(repo, r));
